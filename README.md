@@ -8,6 +8,7 @@ Codes in this repository are intended to help investigate how token privileges w
 ## Table Of Contents
 
 - [PrivFu](#privfu)
+  - [KernelWritePoCs](#KernelWritePoCs)
   - [PrivEditor](#priveditor)
     - [getps Command](#getps-command)
     - [getpriv Command](#getpriv-command)
@@ -22,8 +23,34 @@ Codes in this repository are intended to help investigate how token privileges w
   - [TrustExec](#trustexec)
     - [exec Module](#exec-module)
     - [sid Module](#sid-module)
+  - [UserRightsUtil](#userrightsutil)
+    - [enum Module](#enum-module)
+    - [find Module](#find-module)
+    - [lookup Module](#lookup-module)
+    - [manage Module](#manage-module)
   - [Reference](#reference)
   - [Acknowledgments](#acknowledgments)
+
+## KernelWritePoCs
+
+[Back to Top](#privfu)
+
+[Project](./KernelWritePoCs)
+
+The purpose of this project is to investigate how attackers abuse arbitrary kernel write vulnerability.
+All PoCs are written for [HackSys Extreme Vulnerable Driver](https://github.com/hacksysteam/HackSysExtremeVulnerableDriver).
+These PoCs perform to get SYSTEM integrity level by abusing arbitrary kernel write vulnerability and token privileges.
+Tested on Windows 10 version 1809/1903, but they should work most of Windows 10 theoretically:
+
+| PoC Name | Description |
+| :--- | :--- |
+| [CreateAssignTokenVariant](./KernelWritePoCs/CreateAssignTokenVariant/CreateAssignTokenVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege` and `SeAssignPrimaryTokenPrivilege`. |
+| [CreateImpersonateTokenVariant](./KernelWritePoCs/CreateImpersonateTokenVariant/CreateImpersonateTokenVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege` and `SeImpersonatePrivilege`. |
+| [CreateTokenVariant](./KernelWritePoCs/CreateTokenVariant/CreateTokenVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege`. |
+| [DebugInjectionVariant](./KernelWritePoCs/DebugInjectionVariant/DebugInjectionVariant.cs) | This PoC performs EoP with `SeDebugPrivilege`. Uses code injection to winlogon.exe at final stage. |
+| [DebugUpdateProcVariant](./KernelWritePoCs/DebugUpdateProcVariant/DebugUpdateProcVariant.cs) | This PoC performs EoP with `SeDebugPrivilege`. Creates SYSTEM process from winlogon.exe with `UpdateProcThreadAttribute` API at final stage. |
+| [SecondaryLogonVariant](./KernelWritePoCs/SecondaryLogonVariant/SecondaryLogonVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege` and `SeImpersonatePrivilege`. Uses secondary logon service at final stage. |
+
 
 ## PrivEditor
 
@@ -623,27 +650,29 @@ Currently, released PoCs for a part of them.
 This tool is to enable or disable specific token privileges for a process:
 
 ```
-C:\dev>SwitchPriv.exe
+C:\dev>SwitchPriv.exe -h
 
 SwitchPriv - Tool to control token privileges.
 
 Usage: SwitchPriv.exe [Options]
 
-        -h, --help    : Displays this help message.
-        -e, --enable  : Specifies token privilege to enable. Case insensitive.
-        -d, --disable : Specifies token privilege to disable. Case insensitive.
-        -p, --pid     : Specifies the target PID. Default specifies PPID.
-        -g, --get     : Flag to get available privileges for the target process.
-        -l, --list    : Flag to list values for --enable or --disable option.
+        -h, --help      : Displays this help message.
+        -e, --enable    : Specifies token privilege to enable. Case insensitive.
+        -d, --disable   : Specifies token privilege to disable. Case insensitive.
+        -r, --remove    : Specifies token privilege to remove. Case insensitive.
+        -p, --pid       : Specifies the target PID. Default specifies PPID.
+        -i, --integrity : Specifies integrity level to set.
+        -g, --get       : Flag to get available privileges for the target process.
+        -s, --system    : Flag to run as "NT AUTHORITY\SYSTEM".
+        -l, --list      : Flag to list values for --enable, --disable, --remove and --integrity options.
 ```
 
-To list values for `--enable` or `--disable` option, execute this tool with `--list` flag as follows:
+To list values for `--enable`, `--disable`, `--remove` and `--integrity` options, execute this tool with `--list` flag as follows:
 
 ```
 C:\dev>SwitchPriv.exe -l
 
-Available values for --enable or --disable option:
-
+Available values for --enable, --disable, and --remove options:
     + CreateToken                    : Specifies SeCreateTokenPrivilege.
     + AssignPrimaryToken             : Specifies SeAssignPrimaryTokenPrivilege.
     + LockMemory                     : Specifies SeLockMemoryPrivilege.
@@ -652,8 +681,19 @@ Available values for --enable or --disable option:
     + Tcb                            : Specifies SeTcbPrivilege.
     + Security                       : Specifies SeSecurityPrivilege.
     + TakeOwnership                  : Specifies SeTakeOwnershipPrivilege.
+    + LoadDriver                     : Specifies SeLoadDriverPrivilege.
 
 --snip--
+
+Available values for --integrity option:
+    + 0 : UNTRUSTED_MANDATORY_LEVEL
+    + 1 : LOW_MANDATORY_LEVEL
+    + 2 : MEDIUM_MANDATORY_LEVEL
+    + 3 : MEDIUM_PLUS_MANDATORY_LEVEL
+    + 4 : HIGH_MANDATORY_LEVEL
+    + 5 : SYSTEM_MANDATORY_LEVEL
+    + 6 : PROTECTED_MANDATORY_LEVEL
+    + 7 : SECURE_MANDATORY_LEVEL
 ```
 
 If you want to control privilege for a remote process, specify the target PID as follows.
@@ -665,7 +705,6 @@ C:\dev>SwitchPriv.exe -p 7584 -e undock
 [>] Trying to enable SeUndockPrivilege.
     |-> Target PID   : 7584
     |-> Process Name : notepad
-
 [+] SeUndockPrivilege is enabled successfully.
 ```
 
@@ -685,6 +724,57 @@ SeChangeNotifyPrivilege                    Enabled
 SeUndockPrivilege                          Enabled
 SeIncreaseWorkingSetPrivilege              Disabled
 SeTimeZonePrivilege                        Disabled
+
+[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
+```
+
+To perform any actions as SYSTEM, set `--system` flag as follows:
+
+```
+C:\dev>SwitchPriv.exe -p 1400 -g -s
+
+[>] Trying to get available token privilege(s) for the target process.
+    |-> Target PID   : 1400
+    |-> Process Name : svchost
+[>] Trying to get SYSTEM.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 4572
+[>] Trying to impersonate as smss.exe.
+[+] Impersonation is successful.
+
+
+Privilege Name                             State
+========================================== ========
+SeAssignPrimaryTokenPrivilege              Disabled
+SeLockMemoryPrivilege                      Enabled
+SeIncreaseQuotaPrivilege                   Disabled
+SeTcbPrivilege                             Enabled
+SeSecurityPrivilege                        Disabled
+SeTakeOwnershipPrivilege                   Disabled
+SeLoadDriverPrivilege                      Disabled
+SeSystemProfilePrivilege                   Enabled
+SeSystemtimePrivilege                      Disabled
+SeProfileSingleProcessPrivilege            Enabled
+SeIncreaseBasePriorityPrivilege            Enabled
+SeCreatePagefilePrivilege                  Enabled
+SeCreatePermanentPrivilege                 Enabled
+SeBackupPrivilege                          Disabled
+SeRestorePrivilege                         Disabled
+SeShutdownPrivilege                        Disabled
+SeDebugPrivilege                           Enabled
+SeAuditPrivilege                           Enabled
+SeSystemEnvironmentPrivilege               Disabled
+SeChangeNotifyPrivilege                    Enabled
+SeUndockPrivilege                          Disabled
+SeManageVolumePrivilege                    Disabled
+SeImpersonatePrivilege                     Enabled
+SeCreateGlobalPrivilege                    Enabled
+SeIncreaseWorkingSetPrivilege              Enabled
+SeTimeZonePrivilege                        Enabled
+SeCreateSymbolicLinkPrivilege              Enabled
+SeDelegateSessionUserImpersonatePrivilege  Enabled
+
+[*] Integrity Level : SYSTEM_MANDATORY_LEVEL
 ```
 
 To enable SeChangeNotifyPrivilege, execute with `--disable` option as follows:
@@ -695,7 +785,6 @@ C:\dev>SwitchPriv.exe -p 7584 -d changenotify
 [>] Trying to disable SeChangeNotifyPrivilege.
     |-> Target PID   : 7584
     |-> Process Name : notepad
-
 [+] SeChangeNotifyPrivilege is disabled successfully.
 
 
@@ -712,6 +801,8 @@ SeChangeNotifyPrivilege                    Disabled
 SeUndockPrivilege                          Enabled
 SeIncreaseWorkingSetPrivilege              Disabled
 SeTimeZonePrivilege                        Disabled
+
+[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
 ```
 
 If you don't specify `--pid` option, targets parent process of this tool as follows:
@@ -733,9 +824,8 @@ SeTimeZonePrivilege           Change the time zone                 Disabled
 C:\dev>SwitchPriv.exe -e timezone
 
 [>] Trying to enable SeTimeZonePrivilege.
-    |-> Target PID   : 2752
+    |-> Target PID   : 4464
     |-> Process Name : cmd
-
 [+] SeTimeZonePrivilege is enabled successfully.
 
 
@@ -755,7 +845,7 @@ SeTimeZonePrivilege           Change the time zone                 Enabled
 C:\dev>SwitchPriv.exe -g
 
 [>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 2752
+    |-> Target PID   : 4464
     |-> Process Name : cmd
 
 Privilege Name                             State
@@ -765,9 +855,11 @@ SeChangeNotifyPrivilege                    Enabled
 SeUndockPrivilege                          Disabled
 SeIncreaseWorkingSetPrivilege              Disabled
 SeTimeZonePrivilege                        Enabled
+
+[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
 ```
 
-To enable or disable all available token privileges, specify `all` as the value for `--enable` or `--disable` option:
+To remove privilege, use `--remove` option as follows:
 
 ```
 C:\dev>whoami /priv
@@ -783,12 +875,47 @@ SeUndockPrivilege             Remove computer from docking station Disabled
 SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
 SeTimeZonePrivilege           Change the time zone                 Enabled
 
+C:\dev>SwitchPriv.exe -r timezone
+
+[>] Trying to enable SeTimeZonePrivilege.
+    |-> Target PID   : 4464
+    |-> Process Name : cmd
+[+] SeTimeZonePrivilege is removed successfully.
+
+
+C:\dev>whoami /priv
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                Description                          State
+============================= ==================================== ========
+SeShutdownPrivilege           Shut down the system                 Disabled
+SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
+SeUndockPrivilege             Remove computer from docking station Disabled
+SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
+```
+
+To enable, disable or remove all available token privileges, specify `all` as the value for `--enable`, `--disable` or `--remove` option:
+
+```
+C:\dev>whoami /priv
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                Description                          State
+============================= ==================================== ========
+SeShutdownPrivilege           Shut down the system                 Disabled
+SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
+SeUndockPrivilege             Remove computer from docking station Disabled
+SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
+
 C:\dev>SwitchPriv.exe -e all
 
 [>] Trying to enable all token privileges.
     |-> Target PID   : 15240
     |-> Process Name : cmd
-
 [+] SeShutdownPrivilege is enabled successfully.
 [+] SeUndockPrivilege is enabled successfully.
 [+] SeIncreaseWorkingSetPrivilege is enabled successfully.
@@ -806,7 +933,25 @@ SeShutdownPrivilege           Shut down the system                 Enabled
 SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
 SeUndockPrivilege             Remove computer from docking station Enabled
 SeIncreaseWorkingSetPrivilege Increase a process working set       Enabled
-SeTimeZonePrivilege           Change the time zone                 Enabled
+```
+
+If you want to set integrity level, use `--integrity` option as follows:
+
+```
+C:\dev>whoami /groups | findstr /i level
+Mandatory Label\Medium Mandatory Level                        Label            S-1-16-8192
+
+
+C:\dev>SwitchPriv.exe -i 1
+
+[>] Trying to set integrity level.
+    |-> Target PID   : 5144
+    |-> Process Name : cmd
+[>] Trying to set LOW_MANDATORY_LEVEL.
+[+] LOW_MANDATORY_LEVEL is set successfully.
+
+C:\dev>whoami /groups | findstr /i level
+Mandatory Label\Low Mandatory Level                           Label            S-1-16-4096
 ```
 
 
@@ -849,28 +994,84 @@ TrustExec - Help for "exec" command.
 
 Usage: TrustExec.exe -m exec [Options]
 
-        -h, --help     : Displays this help message.
-        -s, --shell    : Flag for interactive shell.
-        -c, --command  : Specifies command to execute.
-        -d, --domain   : Specifies domain name to add. Default value is "DefaultDomain".
-        -u, --username : Specifies username to add. Default value is "DefaultUser".
-        -i, --id       : Specifies RID for virtual domain. Default value is "110".
-        -f, --full     : Flag to enable all available privileges.
+        -h, --help      : Displays this help message.
+        -s, --shell     : Flag for interactive shell.
+        -f, --full      : Flag to enable all available privileges.
+        -t, --technique : Specifies technique ID. Default ID is 0.
+        -c, --command   : Specifies command to execute.
+        -d, --domain    : Specifies domain name to add. Default value is "DefaultDomain".
+        -u, --username  : Specifies username to add. Default value is "DefaultUser".
+        -i, --id        : Specifies RID for virtual domain. Default value is "110".
+
+Available Technique IDs:
+
+        + 0 - Leverages SeCreateTokenPrivilege. Uses only --shell flag, --full flag and --command option.
+        + 1 - Leverages virtual logon. This technique creates virtual domain and account as a side effect.
 ```
 
-This module create a virtual accound to impersonate as TrustedInstaller group account.
-Tto get interactive shell, set `-s` flag. If you don't specify domain name (`-d` option), username (`-u`) and RID (`-i` option), this module create a virtual account `DefaultDomain\DefaultUser`. Default SID for domain is `S-1-5-110` and for user is `S-1-5-110-110`:
+For this module, 2 techniques are implemeted.
+We can specfy technique with `-t` option.
+If you set `0` or don't set value for `-t` option, `TrustExec` will try to create `TrustedInstaller` process with create token technique.
+To get interactive shell, set `-s` flag. 
 
 ```
 C:\dev>TrustExec.exe -m exec -s
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
+[+] SeCreateTokenPrivilege is enabled successfully.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 3360
+[+] Impersonation is successful.
+[>] Trying to create an elevated primary token.
+[+] An elevated primary token is created successfully.
+[>] Trying to create a token assigned process.
+
+Microsoft Windows [Version 10.0.19043.1526]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\dev>whoami /user
+
+USER INFORMATION
+----------------
+
+User Name           SID
+=================== ========
+nt authority\system S-1-5-18
+
+C:\dev>whoami /groups | findstr /i trusted
+NT SERVICE\TrustedInstaller            Well-known group S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464 Enabled by default, Enabled group, Group owner
+
+C:\dev>whoami /priv
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                Description                               State
+============================= ========================================= =======
+SeAssignPrimaryTokenPrivilege Replace a process level token             Enabled
+SeTcbPrivilege                Act as part of the operating system       Enabled
+SeDebugPrivilege              Debug programs                            Enabled
+SeImpersonatePrivilege        Impersonate a client after authentication Enabled
+```
+
+If you set `1` for `-t` option, `TrustExec` will try to create `TrustedInstaller` process with virtual account technique.
+This technique creates a virtual accound to impersonate as TrustedInstaller group account as a side effect.
+If you don't specify domain name (`-d` option), username (`-u`) and RID (`-i` option), this module create a virtual account `DefaultDomain\DefaultUser`.
+Default SID for domain is `S-1-5-110` and for user is `S-1-5-110-110`:
+
+```
+C:\dev>TrustExec.exe -m exec -s -t 1
+
+[>] Trying to get SYSTEM.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to impersonate as smss.exe.
+[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
 [+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 2616
 [+] Impersonation is successful.
 [>] Trying to generate token group information.
 [>] Trying to add virtual domain and user.
@@ -878,7 +1079,7 @@ C:\dev>TrustExec.exe -m exec -s
     |-> Username : DefaultUser (SID : S-1-5-110-110)
 [+] Added virtual domain and user.
 [>] Trying to logon as DefaultDomain\DefaultUser.
-[>] Trying to create process.
+[>] Trying to create a token assigned process.
 
 Microsoft Windows [Version 10.0.18362.30]
 (c) 2019 Microsoft Corporation. All rights reserved.
@@ -907,15 +1108,15 @@ You can change domain name and username, use `-d` option and `-u` option.
 To change domain RID, use `-i` option as follows:
 
 ```
-C:\dev>TrustExec.exe -m exec -s -d VirtualDomain -u VirtualAdmin -i 92
+C:\dev>TrustExec.exe -m exec -s -d VirtualDomain -u VirtualAdmin -i 92 -t 1
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
 [+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 3612
 [+] Impersonation is successful.
 [>] Trying to generate token group information.
 [>] Trying to add virtual domain and user.
@@ -923,7 +1124,7 @@ C:\dev>TrustExec.exe -m exec -s -d VirtualDomain -u VirtualAdmin -i 92
     |-> Username : VirtualAdmin (SID : S-1-5-92-110)
 [+] Added virtual domain and user.
 [>] Trying to logon as VirtualDomain\VirtualAdmin.
-[>] Trying to create process.
+[>] Trying to create a token assigned process.
 
 Microsoft Windows [Version 10.0.18362.30]
 (c) 2019 Microsoft Corporation. All rights reserved.
@@ -941,36 +1142,39 @@ virtualdomain\virtualadmin S-1-5-92-110
 If you want to execute single command, use `-c` option without `-s` flag as follows:
 
 ```
-C:\dev>TrustExec.exe -m exec -c "whoami /user"
+C:\dev>TrustExec.exe -m exec -c "whoami /user & whoami /priv"
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
+[+] SeCreateTokenPrivilege is enabled successfully.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
-[+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 1464
 [+] Impersonation is successful.
-[>] Trying to generate token group information.
-[>] Trying to add virtual domain and user.
-    |-> Domain   : DefaultDomain (SID : S-1-5-110)
-    |-> Username : DefaultUser (SID : S-1-5-110-110)
-[*] S-1-5-110 or DefaultDomain maybe already exists or invalid.
-[>] Trying to logon as DefaultDomain\DefaultUser.
-[>] Trying to create process.
+[>] Trying to create an elevated primary token.
+[+] An elevated primary token is created successfully.
+[>] Trying to create a token assigned process.
 
 
 USER INFORMATION
 ----------------
 
-User Name                 SID
-========================= =============
-defaultdomain\defaultuser S-1-5-110-110
+User Name           SID
+=================== ========
+nt authority\system S-1-5-18
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                Description                               State
+============================= ========================================= =======
+SeAssignPrimaryTokenPrivilege Replace a process level token             Enabled
+SeTcbPrivilege                Act as part of the operating system       Enabled
+SeDebugPrivilege              Debug programs                            Enabled
+SeImpersonatePrivilege        Impersonate a client after authentication Enabled
 
 [>] Exit.
-[!] Added virtual domain and user are not removed automatically.
-    |-> To remove added virtual user SID   : TrustExec.exe -m sid -r -d DefaultDomain -u DefaultUser
-    |-> To remove added virtual domain SID : TrustExec.exe -m sid -r -d DefaultDomain
 ```
 
 If you want to enable all available privileges, set `-f` flag as follows:
@@ -978,63 +1182,17 @@ If you want to enable all available privileges, set `-f` flag as follows:
 ```
 C:\dev>TrustExec.exe -m exec -c "whoami /priv" -f
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
+[+] SeCreateTokenPrivilege is enabled successfully.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
-[+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 2526
 [+] Impersonation is successful.
-[>] Trying to generate token group information.
-[>] Trying to add virtual domain and user.
-    |-> Domain   : DefaultDomain (SID : S-1-5-110)
-    |-> Username : DefaultUser (SID : S-1-5-110-110)
-[+] Added virtual domain and user.
-[>] Trying to logon as DefaultDomain\DefaultUser.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
-[+] SeIncreaseQuotaPrivilege is enabled successfully.
-[>] Trying to enable SeSecurityPrivilege.
-[+] SeSecurityPrivilege is enabled successfully.
-[>] Trying to enable SeTakeOwnershipPrivilege.
-[+] SeTakeOwnershipPrivilege is enabled successfully.
-[>] Trying to enable SeLoadDriverPrivilege.
-[+] SeLoadDriverPrivilege is enabled successfully.
-[>] Trying to enable SeSystemProfilePrivilege.
-[+] SeSystemProfilePrivilege is enabled successfully.
-[>] Trying to enable SeSystemtimePrivilege.
-[+] SeSystemtimePrivilege is enabled successfully.
-[>] Trying to enable SeProfileSingleProcessPrivilege.
-[+] SeProfileSingleProcessPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseBasePriorityPrivilege.
-[+] SeIncreaseBasePriorityPrivilege is enabled successfully.
-[>] Trying to enable SeCreatePagefilePrivilege.
-[+] SeCreatePagefilePrivilege is enabled successfully.
-[>] Trying to enable SeBackupPrivilege.
-[+] SeBackupPrivilege is enabled successfully.
-[>] Trying to enable SeRestorePrivilege.
-[+] SeRestorePrivilege is enabled successfully.
-[>] Trying to enable SeShutdownPrivilege.
-[+] SeShutdownPrivilege is enabled successfully.
-[>] Trying to enable SeDebugPrivilege.
-[+] SeDebugPrivilege is enabled successfully.
-[>] Trying to enable SeSystemEnvironmentPrivilege.
-[+] SeSystemEnvironmentPrivilege is enabled successfully.
-[>] Trying to enable SeRemoteShutdownPrivilege.
-[+] SeRemoteShutdownPrivilege is enabled successfully.
-[>] Trying to enable SeUndockPrivilege.
-[+] SeUndockPrivilege is enabled successfully.
-[>] Trying to enable SeManageVolumePrivilege.
-[+] SeManageVolumePrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseWorkingSetPrivilege.
-[+] SeIncreaseWorkingSetPrivilege is enabled successfully.
-[>] Trying to enable SeTimeZonePrivilege.
-[+] SeTimeZonePrivilege is enabled successfully.
-[>] Trying to enable SeCreateSymbolicLinkPrivilege.
-[+] SeCreateSymbolicLinkPrivilege is enabled successfully.
-[>] Trying to enable SeDelegateSessionUserImpersonatePrivilege.
-[+] SeDelegateSessionUserImpersonatePrivilege is enabled successfully.
-[>] Trying to create process.
+[>] Trying to create an elevated primary token.
+[+] An elevated primary token is created successfully.
+[>] Trying to create a token assigned process.
 
 
 PRIVILEGES INFORMATION
@@ -1042,7 +1200,12 @@ PRIVILEGES INFORMATION
 
 Privilege Name                            Description                                                        State
 ========================================= ================================================================== =======
+SeCreateTokenPrivilege                    Create a token object                                              Enabled
+SeAssignPrimaryTokenPrivilege             Replace a process level token                                      Enabled
+SeLockMemoryPrivilege                     Lock pages in memory                                               Enabled
 SeIncreaseQuotaPrivilege                  Adjust memory quotas for a process                                 Enabled
+SeMachineAccountPrivilege                 Add workstations to domain                                         Enabled
+SeTcbPrivilege                            Act as part of the operating system                                Enabled
 SeSecurityPrivilege                       Manage auditing and security log                                   Enabled
 SeTakeOwnershipPrivilege                  Take ownership of files or other objects                           Enabled
 SeLoadDriverPrivilege                     Load and unload device drivers                                     Enabled
@@ -1051,29 +1214,32 @@ SeSystemtimePrivilege                     Change the system time                
 SeProfileSingleProcessPrivilege           Profile single process                                             Enabled
 SeIncreaseBasePriorityPrivilege           Increase scheduling priority                                       Enabled
 SeCreatePagefilePrivilege                 Create a pagefile                                                  Enabled
+SeCreatePermanentPrivilege                Create permanent shared objects                                    Enabled
 SeBackupPrivilege                         Back up files and directories                                      Enabled
 SeRestorePrivilege                        Restore files and directories                                      Enabled
 SeShutdownPrivilege                       Shut down the system                                               Enabled
 SeDebugPrivilege                          Debug programs                                                     Enabled
+SeAuditPrivilege                          Generate security audits                                           Enabled
 SeSystemEnvironmentPrivilege              Modify firmware environment values                                 Enabled
 SeChangeNotifyPrivilege                   Bypass traverse checking                                           Enabled
 SeRemoteShutdownPrivilege                 Force shutdown from a remote system                                Enabled
 SeUndockPrivilege                         Remove computer from docking station                               Enabled
+SeSyncAgentPrivilege                      Synchronize directory service data                                 Enabled
+SeEnableDelegationPrivilege               Enable computer and user accounts to be trusted for delegation     Enabled
 SeManageVolumePrivilege                   Perform volume maintenance tasks                                   Enabled
 SeImpersonatePrivilege                    Impersonate a client after authentication                          Enabled
 SeCreateGlobalPrivilege                   Create global objects                                              Enabled
+SeTrustedCredManAccessPrivilege           Access Credential Manager as a trusted caller                      Enabled
+SeRelabelPrivilege                        Modify an object label                                             Enabled
 SeIncreaseWorkingSetPrivilege             Increase a process working set                                     Enabled
 SeTimeZonePrivilege                       Change the time zone                                               Enabled
 SeCreateSymbolicLinkPrivilege             Create symbolic links                                              Enabled
 SeDelegateSessionUserImpersonatePrivilege Obtain an impersonation token for another user in the same session Enabled
 
 [>] Exit.
-[!] Added virtual domain and user are not removed automatically.
-    |-> To remove added virtual user SID   : TrustExec.exe -m sid -r -d DefaultDomain -u DefaultUser
-    |-> To remove added virtual domain SID : TrustExec.exe -m sid -r -d DefaultDomain
 ```
 
-Added domain and username are not removed automatically.
+Added domain and username by virtual account technique are not removed automatically.
 If you want to remove them, run the `sid` module as shown in the last output.
 
 
@@ -1102,23 +1268,32 @@ To lookup SID, set `-l` flag. If you want to lookup domain or username from SID,
 ```
 C:\dev>TrustExec.exe -m sid -l -s S-1-5-18
 
-[*] Result : NT AUTHORITY\SYSTEM (SID : S-1-5-18)
+[*] Result:
+    |-> Account Name : nt authority\system
+    |-> SID          : S-1-5-18
+    |-> Account Type : SidTypeWellKnownGroup
 ```
 
 If you want to lookup SID from domain name, specify domain name with `-d` option as follows:
 
 ```
-C:\dev>TrustExec.exe -m sid -l -d VirtualDomain
+C:\dev>TrustExec.exe -m sid -l -d contoso
 
-[*] Result : virtualdomain (SID : S-1-5-92)
+[*] Result:
+    |-> Account Name : contoso
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818
+    |-> Account Type : SidTypeDomain
 ```
 
 If you want to lookup SID from domain name and username, specify domain name with `-d` option and username with `-u` option as follows:
 
 ```
-C:\dev>TrustExec.exe -m sid -l -d defaultdomain -u defaultuser
+C:\dev>TrustExec.exe -m sid -l -d contoso -u david
 
-[*] Result : defaultdomain\defaultuser (SID : S-1-5-110-110)
+[*] Result:
+    |-> Account Name : contoso\david
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-1104
+    |-> Account Type : SidTypeUser
 ```
 
 To remove virutal account, set `-r` flag.
@@ -1127,13 +1302,13 @@ Domain name to remove is specified with `-d` option, username is specified with 
 ```
 C:\dev>TrustExec.exe -m sid -r -d defaultdomain -u defaultuser
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
 [+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 2568
 [+] Impersonation is successful.
 [>] Trying to remove SID.
     |-> Domain   : defaultdomain
@@ -1144,13 +1319,13 @@ C:\dev>TrustExec.exe -m sid -r -d defaultdomain -u defaultuser
 
 C:\dev>TrustExec.exe -m sid -r -d defaultdomain
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
 [+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 4696
 [+] Impersonation is successful.
 [>] Trying to remove SID.
     |-> Domain   : defaultdomain
@@ -1166,13 +1341,13 @@ If you want add domain or user SID, set `-a` flag as follows:
 ```
 C:\dev>TrustExec.exe -m sid -a -d virtualworld -u virtualadmin -i 97
 
-[>] Trying to enable SeDebugPrivilege.
+[>] Trying to get SYSTEM.
 [+] SeDebugPrivilege is enabled successfully.
 [>] Trying to impersonate as smss.exe.
-[>] Trying to enable SeAssignPrimaryTokenPrivilege.
 [+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to enable SeIncreaseQuotaPrivilege.
 [+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 3628
 [+] Impersonation is successful.
 [>] Trying to add virtual domain and user.
     |-> Domain   : virtualworld (SID : S-1-5-97)
@@ -1190,6 +1365,242 @@ C:\dev>TrustExec.exe -m sid -l -s S-1-5-97-110
 ```
 
 
+## UserRightsUtil
+
+[Back to Top](#privfu)
+
+[Project](./UserRightsUtil)
+
+This tool is to manage user right without `secpol.msc`.
+Commands other than `lookup` require administrator privileges:
+
+```
+C:\dev>UserRightsUtil.exe
+
+UserRightsUtil - User rights management utility.
+
+Usage: UserRightsUtil.exe [Options]
+
+        -h, --help   : Displays this help message.
+        -m, --module : Specifies module name.
+
+Available Modules:
+
+        + enum   - Enumerate user rights for specific account.
+        + find   - Find accounts have a specific user right.
+        + lookup - Lookup account's SID.
+        + manage - Grant or revoke user rights.
+
+[*] To see help for each modules, specify "-m <Module> -h" as arguments.
+
+[!] -m option is required.
+```
+
+### enum Module
+
+To enumerate user rights for a specific account, use `enum` command with `-u` and ~d~ opitons or `-s` option as follows:
+
+```
+C:\dev>UserRightsUtil.exe -m enum -d contoso -u jeff
+
+[>] Trying to enumerate user rights.
+    |-> Username : CONTOSO\jeff
+    |-> SID      : S-1-5-21-3654360273-254804765-2004310818-1105
+[+] Got 7 user right(s).
+    |-> SeChangeNotifyPrivilege
+    |-> SeIncreaseWorkingSetPrivilege
+    |-> SeShutdownPrivilege
+    |-> SeUndockPrivilege
+    |-> SeTimeZonePrivilege
+    |-> SeInteractiveLogonRight
+    |-> SeNetworkLogonRight
+[*] Done.
+
+
+C:\dev>UserRightsUtil.exe -m enum -s S-1-5-21-3654360273-254804765-2004310818-1105
+
+[>] Trying to enumerate user rights.
+    |-> Username : CONTOSO\jeff
+    |-> SID      : S-1-5-21-3654360273-254804765-2004310818-1105
+[+] Got 7 user right(s).
+    |-> SeChangeNotifyPrivilege
+    |-> SeIncreaseWorkingSetPrivilege
+    |-> SeShutdownPrivilege
+    |-> SeUndockPrivilege
+    |-> SeTimeZonePrivilege
+    |-> SeInteractiveLogonRight
+    |-> SeNetworkLogonRight
+[*] Done.
+```
+
+If you don't specify domain name with `-d` option, use local computer name as domain name:
+
+```
+C:\dev>hostname
+CL01
+
+C:\dev>UserRightsUtil.exe -m enum -u guest
+
+[>] Trying to enumerate user rights.
+    |-> Username : CL01\Guest
+    |-> SID      : S-1-5-21-2659926013-4203293582-4033841475-501
+[+] Got 3 user right(s).
+    |-> SeInteractiveLogonRight
+    |-> SeDenyInteractiveLogonRight
+    |-> SeDenyNetworkLogonRight
+[*] Done.
+```
+
+### find Module
+
+This command is to find users who have a specific right.
+For example, if you want to find users have `SeDebugPrivilege`, execute as follows:
+
+```
+C:\dev>UserRightsUtil.exe -m find -r debug
+
+[>] Trying to find users with SeDebugPrivilege.
+[+] Found 1 user(s).
+    |-> BUILTIN\Administrators (SID : S-1-5-32-544, Type : SidTypeAlias)
+[*] Done.
+```
+
+To list available value for `-r` option, use `-l` option:
+
+```
+C:\dev>UserRightsUtil.exe -m find -l
+
+Available values for --right option:
+        + TrustedCredManAccess           : Specfies SeTrustedCredManAccessPrivilege.
+        + NetworkLogon                   : Specfies SeNetworkLogonRight.
+        + Tcb                            : Specfies SeTcbPrivilege.
+        + MachineAccount                 : Specfies SeMachineAccountPrivilege.
+        + IncreaseQuota                  : Specfies SeIncreaseQuotaPrivilege.
+        + InteractiveLogon               : Specfies SeInteractiveLogonRight.
+        + RemoteInteractiveLogon         : Specfies SeRemoteInteractiveLogonRight.
+        + Backup                         : Specfies SeBackupPrivilege.
+
+--snip--
+```
+
+
+### lookup Module
+
+This command is to lookup account SID as follows:
+
+```
+C:\dev>UserRightsUtil.exe -m lookup -d contoso -u david
+
+[*] Result:
+    |-> Account Name : CONTOSO\david
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-1104
+    |-> Account Type : SidTypeUser
+
+
+C:\dev>UserRightsUtil.exe -m lookup -s S-1-5-21-3654360273-254804765-2004310818-500
+
+[*] Result:
+    |-> Account Name : CONTOSO\Administrator
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-500
+    |-> Account Type : SidTypeUser
+
+
+C:\dev>UserRightsUtil.exe -m lookup -d contoso -u "domain admins"
+
+[*] Result:
+    |-> Account Name : CONTOSO\Domain Admins
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-512
+    |-> Account Type : SidTypeGroup
+```
+
+If you don't specify domain name with `-d` option, use local computer name as domain name:
+
+```
+C:\dev>hostname
+CL01
+
+C:\dev>UserRightsUtil.exe -m lookup -u admin
+
+[*] Result:
+    |-> Account Name : CL01\admin
+    |-> SID          : S-1-5-21-2659926013-4203293582-4033841475-500
+    |-> Account Type : SidTypeUser
+```
+
+### manage Module
+
+This command is to grant or revoke user rights for a specific user account.
+To grant user right, specify a user right as the value for `-g` option:
+
+```
+C:\dev>UserRightsUtil.exe -m find -r tcb
+
+[>] Trying to find users with SeTcbPrivilege.
+[-] No users.
+[*] Done.
+
+
+C:\dev>UserRightsUtil.exe -m manage -g tcb -d contoso -u administrator
+
+[>] Target account information:
+    |-> Username : CONTOSO\Administrator
+    |-> SID      : S-1-5-21-3654360273-254804765-2004310818-500
+[>] Trying to grant SeTcbPrivilege.
+[+] SeTcbPrivilege is granted successfully.
+
+C:\dev>UserRightsUtil.exe -m find -r tcb
+
+[>] Trying to find users with SeTcbPrivilege.
+[+] Found 1 user(s).
+    |-> CONTOSO\Administrator (SID : S-1-5-21-3654360273-254804765-2004310818-500, Type : SidTypeUser)
+[*] Done.
+```
+
+To revoke user right, specify a user right as the value for `-r` option:
+
+```
+C:\dev>UserRightsUtil.exe -m find -r tcb
+
+[>] Trying to find users with SeTcbPrivilege.
+[+] Found 1 user(s).
+    |-> CONTOSO\Administrator (SID : S-1-5-21-3654360273-254804765-2004310818-500, Type : SidTypeUser)
+[*] Done.
+
+
+C:\dev>UserRightsUtil.exe -m manage -r tcb -d contoso -u administrator
+
+[>] Target account information:
+    |-> Username : CONTOSO\Administrator
+    |-> SID      : S-1-5-21-3654360273-254804765-2004310818-500
+[>] Trying to revoke SeTcbPrivilege
+[+] SeTcbPrivilege is revoked successfully.
+
+C:\de>UserRightsUtil.exe -m find -r tcb
+
+[>] Trying to find users with SeTcbPrivilege.
+[-] No users.
+[*] Done.
+```
+
+To list available value for `-g` or `-r` option, use `-l` option:
+
+```
+C:\dev>UserRightsUtil.exe -m manage -l
+
+Available values for --grant and --revoke options:
+        + TrustedCredManAccess           : Specfies SeTrustedCredManAccessPrivilege.
+        + NetworkLogon                   : Specfies SeNetworkLogonRight.
+        + Tcb                            : Specfies SeTcbPrivilege.
+        + MachineAccount                 : Specfies SeMachineAccountPrivilege.
+        + IncreaseQuota                  : Specfies SeIncreaseQuotaPrivilege.
+        + InteractiveLogon               : Specfies SeInteractiveLogonRight.
+        + RemoteInteractiveLogon         : Specfies SeRemoteInteractiveLogonRight.
+        + Backup                         : Specfies SeBackupPrivilege.
+
+--snip--
+```
+
+
 ## Reference
 
 [Back to Top](#privfu)
@@ -1197,6 +1608,7 @@ C:\dev>TrustExec.exe -m sid -l -s S-1-5-97-110
 - [Priv2Admin](https://github.com/gtworek/Priv2Admin) and [PSBits](https://github.com/gtworek/PSBits) by [Grzegorz Tworek](https://twitter.com/0gtweet)
 - [Abusing Token Privileges For LPE](https://github.com/hatRiot/token-priv/blob/master/abusing_token_eop_1.0.txt) by [Bryan Alexander](https://twitter.com/dronesec) and [Steve Breen](https://twitter.com/breenmachine)
 - [whoami /priv](https://github.com/decoder-it/whoami-priv-Hackinparis2019) by [Andrea Pierini](https://twitter.com/decoder_it)
+- [HackSys Extreme Vulnerable Driver](https://github.com/hacksysteam/HackSysExtremeVulnerableDriver) by [Ashfaq Ansari](https://twitter.com/hacksysteam)
 
 
 ## Acknowledgments
@@ -1213,3 +1625,7 @@ Thanks for your notable research:
 - Bryan Alexander ([@dronesec](https://twitter.com/dronesec))
 - Steve Breen ([@breenmachine](https://twitter.com/breenmachine))
 - Andrea Pierini ([@decoder_it](https://twitter.com/decoder_it))
+
+Thanks for your sample kernel driver release:
+
+- Ashfaq Ansari ([@HackSysTeam](https://twitter.com/hacksysteam))

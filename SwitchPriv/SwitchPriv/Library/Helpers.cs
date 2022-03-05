@@ -7,6 +7,54 @@ namespace SwitchPriv.Library
 {
     class Helpers
     {
+        public static string ConvertIndexToMandatoryLevelSid(int index)
+        {
+            if (index == (int)Globals.MANDATORY_LEVEL_INDEX.UNTRUSTED_MANDATORY_LEVEL)
+                return Win32Const.UNTRUSTED_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.LOW_MANDATORY_LEVEL)
+                return Win32Const.LOW_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_MANDATORY_LEVEL)
+                return Win32Const.MEDIUM_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_PLUS_MANDATORY_LEVEL)
+                return Win32Const.MEDIUM_PLUS_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.HIGH_MANDATORY_LEVEL)
+                return Win32Const.HIGH_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SYSTEM_MANDATORY_LEVEL)
+                return Win32Const.SYSTEM_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.PROTECTED_MANDATORY_LEVEL)
+                return Win32Const.PROTECTED_MANDATORY_LEVEL;
+            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SECURE_MANDATORY_LEVEL)
+                return Win32Const.SECURE_MANDATORY_LEVEL;
+            else
+                return null;
+        }
+
+
+        public static string ConvertStringSidToMandatoryLevelName(string stringSid)
+        {
+            StringComparison opt = StringComparison.OrdinalIgnoreCase;
+
+            if (string.Compare(stringSid, Win32Const.UNTRUSTED_MANDATORY_LEVEL, opt) == 0)
+                return "UNTRUSTED_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.LOW_MANDATORY_LEVEL, opt) == 0)
+                return "LOW_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.MEDIUM_MANDATORY_LEVEL, opt) == 0)
+                return "MEDIUM_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.MEDIUM_PLUS_MANDATORY_LEVEL, opt) == 0)
+                return "MEDIUM_PLUS_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.HIGH_MANDATORY_LEVEL, opt) == 0)
+                return "HIGH_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.SYSTEM_MANDATORY_LEVEL, opt) == 0)
+                return "SYSTEM_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.PROTECTED_MANDATORY_LEVEL, opt) == 0)
+                return "PROTECTED_MANDATORY_LEVEL";
+            else if (string.Compare(stringSid, Win32Const.SECURE_MANDATORY_LEVEL, opt) == 0)
+                return "SECURE_MANDATORY_LEVEL";
+            else
+                return null;
+        }
+
+
         public static string GetFullPrivilegeName(string shortenName)
         {
             StringComparison opt = StringComparison.OrdinalIgnoreCase;
@@ -86,6 +134,34 @@ namespace SwitchPriv.Library
         }
 
 
+        public static IntPtr GetInformationFromToken(
+            IntPtr hToken,
+            Win32Const.TOKEN_INFORMATION_CLASS tokenInfoClass)
+        {
+            bool status;
+            int error;
+            int length = 4;
+            IntPtr buffer;
+
+            do
+            {
+                buffer = Marshal.AllocHGlobal(length);
+                ZeroMemory(buffer, length);
+                status = Win32Api.GetTokenInformation(
+                    hToken, tokenInfoClass, buffer, length, out length);
+                error = Marshal.GetLastWin32Error();
+
+                if (!status)
+                    Marshal.FreeHGlobal(buffer);
+            } while (!status && (error == Win32Const.ERROR_INSUFFICIENT_BUFFER || error == Win32Const.ERROR_BAD_LENGTH));
+
+            if (!status)
+                return IntPtr.Zero;
+
+            return buffer;
+        }
+
+
         public static bool GetPrivilegeLuid(
             string privilegeName,
             out Win32Struct.LUID luid)
@@ -133,33 +209,44 @@ namespace SwitchPriv.Library
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            uint FORMAT_MESSAGE_FROM_HMODULE = 0x00000800;
-            uint FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000;
-            StringBuilder message = new StringBuilder(255);
-            IntPtr pNtdll = IntPtr.Zero;
+            var message = new StringBuilder();
+            var messageSize = 255;
+            Win32Const.FormatMessageFlags messageFlag;
+            IntPtr pNtdll;
+            message.Capacity = messageSize;
 
             if (isNtStatus)
+            {
                 pNtdll = Win32Api.LoadLibrary("ntdll.dll");
+                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                    Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            }
+            else
+            {
+                pNtdll = IntPtr.Zero;
+                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            }
 
-            uint status = Win32Api.FormatMessage(
-                isNtStatus ? (FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM) : FORMAT_MESSAGE_FROM_SYSTEM,
+            uint ret = Win32Api.FormatMessage(
+                messageFlag,
                 pNtdll,
                 code,
                 0,
                 message,
-                255,
+                messageSize,
                 IntPtr.Zero);
 
             if (isNtStatus)
                 Win32Api.FreeLibrary(pNtdll);
 
-            if (status == 0)
+            if (ret == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }
             else
             {
-                return string.Format("[ERROR] Code 0x{0} : {1}",
+                return string.Format(
+                    "[ERROR] Code 0x{0} : {1}",
                     code.ToString("X8"),
                     message.ToString().Trim());
             }
@@ -206,7 +293,7 @@ namespace SwitchPriv.Library
         public static void ListPrivilegeOptionValues()
         {
             Console.WriteLine();
-            Console.WriteLine("Available values for --enable or --disable option:\n");
+            Console.WriteLine("Available values for --enable, --disable, and --remove options:");
             Console.WriteLine("    + CreateToken                    : Specifies SeCreateTokenPrivilege.");
             Console.WriteLine("    + AssignPrimaryToken             : Specifies SeAssignPrimaryTokenPrivilege.");
             Console.WriteLine("    + LockMemory                     : Specifies SeLockMemoryPrivilege.");
@@ -244,16 +331,22 @@ namespace SwitchPriv.Library
             Console.WriteLine("    + DelegateSessionUserImpersonate : Specifies SeDelegateSessionUserImpersonatePrivilege.");
             Console.WriteLine("    + All                            : Specifies all token privileges.");
             Console.WriteLine();
+            Console.WriteLine("Available values for --integrity option:");
+            Console.WriteLine("    + 0 : UNTRUSTED_MANDATORY_LEVEL");
+            Console.WriteLine("    + 1 : LOW_MANDATORY_LEVEL");
+            Console.WriteLine("    + 2 : MEDIUM_MANDATORY_LEVEL");
+            Console.WriteLine("    + 3 : MEDIUM_PLUS_MANDATORY_LEVEL");
+            Console.WriteLine("    + 4 : HIGH_MANDATORY_LEVEL");
+            Console.WriteLine("    + 5 : SYSTEM_MANDATORY_LEVEL");
+            Console.WriteLine("    + 6 : PROTECTED_MANDATORY_LEVEL");
+            Console.WriteLine("    + 7 : SECURE_MANDATORY_LEVEL");
+            Console.WriteLine();
         }
 
 
         public static void ZeroMemory(IntPtr buffer, int size)
         {
-            byte[] nullBytes = new byte[size];
-
-            for (var idx = 0; idx < size; idx++)
-                nullBytes[idx] = 0;
-
+            var nullBytes = new byte[size];
             Marshal.Copy(nullBytes, 0, buffer, size);
         }
     }

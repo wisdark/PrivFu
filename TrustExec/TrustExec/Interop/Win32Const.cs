@@ -5,24 +5,14 @@ namespace TrustExec.Interop
     class Win32Const
     {
         [Flags]
-        public enum CreateProcessFlags : uint
+        public enum FormatMessageFlags : uint
         {
-            CREATE_BREAKAWAY_FROM_JOB = 0x01000000,
-            CREATE_DEFAULT_ERROR_MODE = 0x04000000,
-            CREATE_NEW_CONSOLE = 0x00000010,
-            CREATE_NEW_PROCESS_GROUP = 0x00000200,
-            CREATE_NO_WINDOW = 0x08000000,
-            CREATE_PROTECTED_PROCESS = 0x00040000,
-            CREATE_PRESERVE_CODE_AUTHZ_LEVEL = 0x02000000,
-            CREATE_SEPARATE_WOW_VDM = 0x00000800,
-            CREATE_SHARED_WOW_VDM = 0x00001000,
-            CREATE_SUSPENDED = 0x00000004,
-            CREATE_UNICODE_ENVIRONMENT = 0x00000400,
-            DEBUG_ONLY_THIS_PROCESS = 0x00000002,
-            DEBUG_PROCESS = 0x00000001,
-            DETACHED_PROCESS = 0x00000008,
-            EXTENDED_STARTUPINFO_PRESENT = 0x00080000,
-            INHERIT_PARENT_AFFINITY = 0x00010000
+            FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100,
+            FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200,
+            FORMAT_MESSAGE_FROM_STRING = 0x00000400,
+            FORMAT_MESSAGE_FROM_HMODULE = 0x00000800,
+            FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000,
+            FORMAT_MESSAGE_ARGUMENT_ARRAY = 0x00002000
         }
 
         [Flags]
@@ -67,6 +57,27 @@ namespace TrustExec.Interop
             PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000,
             SYNCHRONIZE = 0x00100000,
             MAXIMUM_ALLOWED = 0x02000000
+        }
+
+        [Flags]
+        public enum ProcessCreationFlags : uint
+        {
+            DEBUG_PROCESS = 0x00000001,
+            DEBUG_ONLY_THIS_PROCESS = 0x00000002,
+            CREATE_SUSPENDED = 0x00000004,
+            DETACHED_PROCESS = 0x00000008,
+            CREATE_NEW_CONSOLE = 0x00000010,
+            CREATE_NEW_PROCESS_GROUP = 0x00000200,
+            CREATE_UNICODE_ENVIRONMENT = 0x00000400,
+            CREATE_SEPARATE_WOW_VDM = 0x00000800,
+            CREATE_SHARED_WOW_VDM = 0x00001000,
+            INHERIT_PARENT_AFFINITY = 0x00010000,
+            CREATE_PROTECTED_PROCESS = 0x00040000,
+            EXTENDED_STARTUPINFO_PRESENT = 0x00080000,
+            CREATE_BREAKAWAY_FROM_JOB = 0x01000000,
+            CREATE_PRESERVE_CODE_AUTHZ_LEVEL = 0x02000000,
+            CREATE_DEFAULT_ERROR_MODE = 0x04000000,
+            CREATE_NO_WINDOW = 0x08000000,
         }
 
         public enum PROCESS_INFORMATION_CLASS
@@ -224,7 +235,9 @@ namespace TrustExec.Interop
         }
 
         // NTSTATUS
-        public const int STATUS_SUCCESS = 0;
+        public const uint STATUS_SUCCESS = 0;
+        public const uint STATUS_INVALID_PARAMETER = 0xC000000D;
+        public const uint STATUS_NOT_FOUND = 0xC0000225;
 
         // Win32Error
         public const int ERROR_BAD_LENGTH = 0x00000018;
@@ -234,14 +247,9 @@ namespace TrustExec.Interop
         public static readonly Win32Struct.LUID ANONYMOUS_LOGON_LUID = new Win32Struct.LUID(0x3e6, 0);
         public static readonly Win32Struct.LUID SYSTEM_LUID = new Win32Struct.LUID(0x3e7, 0);
 
-        // Well known security RID
-        public const int SECURITY_ANONYMOUS_LOGON_RID = 0x00000007;
-        public const int SECURITY_AUTHENTICATED_USER_RID = 0x0000000B;
-        public const int SECURITY_LOCAL_SYSTEM_RID = 0x00000012;
-        public const int SECURITY_BUILTIN_DOMAIN_RID = 0x00000020;
-
         // Well known RID
         public const string SECURITY_WORLD_RID = "S-1-1-0";
+        public const string SECURITY_AUTHENTICATED_USER_RID = "S-1-5-11";
         public const string DOMAIN_ALIAS_RID_ADMINS = "S-1-5-32-544";
         public const string DOMAIN_ALIAS_RID_USERS = "S-1-5-32-545";
         public const string LOCAL_SYSTEM_RID = "S-1-5-18";

@@ -18,6 +18,26 @@ namespace SwitchPriv.Interop
             IntPtr PreviousState, // out TOKEN_PRIVILEGES
             IntPtr ReturnLength); // out int
 
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern bool ConvertSidToStringSid(IntPtr pSid, out string strSid);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern bool ConvertStringSidToSid(
+            string StringSid,
+            out IntPtr pSid);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public extern static bool DuplicateTokenEx(
+            IntPtr hExistingToken,
+            Win32Const.TokenAccessFlags dwDesiredAccess,
+            IntPtr lpTokenAttributes,
+            Win32Const.SECURITY_IMPERSONATION_LEVEL ImpersonationLevel,
+            Win32Const.TOKEN_TYPE TokenType,
+            out IntPtr phNewToken);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern int GetLengthSid(IntPtr pSid);
+
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool GetTokenInformation(
             IntPtr TokenHandle,
@@ -25,6 +45,9 @@ namespace SwitchPriv.Interop
             IntPtr TokenInformation,
             int TokenInformationLength,
             out int ReturnLength);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool LookupPrivilegeName(
@@ -42,7 +65,7 @@ namespace SwitchPriv.Interop
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool OpenProcessToken(
             IntPtr ProcessHandle,
-            uint DesiredAccess,
+            Win32Const.TokenAccessFlags DesiredAccess,
             out IntPtr TokenHandle);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -51,31 +74,47 @@ namespace SwitchPriv.Interop
             IntPtr RequiredPrivileges, // ref PRIVILEGE_SET
             out bool pfResult);
 
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool RevertToSelf();
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool SetTokenInformation(
+            IntPtr TokenHandle,
+            Win32Const.TOKEN_INFORMATION_CLASS TokenInformationClass,
+            IntPtr TokenInformation,
+            int TokenInformationLength);
+
         /*
          * kernel32.dll
          */
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern uint FormatMessage(
-            uint dwFlags,
+            Win32Const.FormatMessageFlags dwFlags,
             IntPtr lpSource,
             int dwMessageId,
             int dwLanguageId,
             StringBuilder lpBuffer,
-            uint nSize,
+            int nSize,
             IntPtr Arguments);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hObject);
+        public static extern bool FreeLibrary(IntPtr hLibModule);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool FreeLibrary(IntPtr hLibModule);
+        public static extern int GetCurrentThreadId();
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
         public static extern IntPtr LoadLibrary(string lpFileName);
 
         [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr LocalFree(IntPtr hMem);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(
-            uint processAccess,
+            Win32Const.ProcessAccessFlags processAccess,
             bool bInheritHandle,
             int processId);
 
@@ -83,7 +122,7 @@ namespace SwitchPriv.Interop
          * ntdll.dll
          */
         [DllImport("ntdll.dll", SetLastError = true)]
-        public static extern int NtQueryInformationProcess(
+        public static extern uint NtQueryInformationProcess(
             IntPtr ProcessHandle, 
             Win32Const.PROCESSINFOCLASS ProcessInformationClass, 
             IntPtr ProcessInformation, 
