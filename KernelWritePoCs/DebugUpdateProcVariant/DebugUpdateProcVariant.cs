@@ -316,6 +316,25 @@ namespace DebugUpdateProcVariant
             MaxSystemInfoClass = 0xD2
         }
 
+        [Flags]
+        enum TokenAccessFlags : uint
+        {
+            TOKEN_ADJUST_DEFAULT = 0x0080,
+            TOKEN_ADJUST_GROUPS = 0x0040,
+            TOKEN_ADJUST_PRIVILEGES = 0x0020,
+            TOKEN_ADJUST_SESSIONID = 0x0100,
+            TOKEN_ASSIGN_PRIMARY = 0x0001,
+            TOKEN_DUPLICATE = 0x0002,
+            TOKEN_EXECUTE = 0x00020000,
+            TOKEN_IMPERSONATE = 0x0004,
+            TOKEN_QUERY = 0x0008,
+            TOKEN_QUERY_SOURCE = 0x0010,
+            TOKEN_READ = 0x00020008,
+            TOKEN_WRITE = 0x000200E0,
+            TOKEN_ALL_ACCESS = 0x000F01FF,
+            MAXIMUM_ALLOWED = 0x02000000
+        }
+
         // Windows Struct
         [StructLayout(LayoutKind.Sequential)]
         struct PROCESS_INFORMATION
@@ -372,6 +391,15 @@ namespace DebugUpdateProcVariant
 
         // Windows API
         /*
+         * advapi32.dll
+         */
+        [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool OpenProcessToken(
+            IntPtr hProcess,
+            TokenAccessFlags DesiredAccess,
+            out IntPtr hToken);
+
+        /*
          * kernel32.dll
          */
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -412,7 +440,7 @@ namespace DebugUpdateProcVariant
             IntPtr lpOverlapped);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern uint FormatMessage(
+        static extern int FormatMessage(
             FormatMessageFlags dwFlags,
             IntPtr lpSource,
             int dwMessageId,
@@ -422,17 +450,11 @@ namespace DebugUpdateProcVariant
             IntPtr Arguments);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool FreeLibrary(IntPtr hLibModule);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool InitializeProcThreadAttributeList(
             IntPtr lpAttributeList,
             int dwAttributeCount,
             uint dwFlags,
             ref int lpSize);
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
-        static extern IntPtr LoadLibrary(string lpFileName);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern IntPtr OpenProcess(
@@ -454,15 +476,15 @@ namespace DebugUpdateProcVariant
          * ntdll.dll
          */
         [DllImport("ntdll.dll", SetLastError = true)]
-        static extern uint NtQuerySystemInformation(
+        static extern int NtQuerySystemInformation(
             SYSTEM_INFORMATION_CLASS SystemInformationClass,
             IntPtr SystemInformation,
             int SystemInformationLength,
             ref int ReturnLength);
 
         // Windows Consts
-        const uint STATUS_SUCCESS = 0;
-        const uint STATUS_INFO_LENGTH_MISMATCH = 0xC0000004;
+        const int STATUS_SUCCESS = 0;
+        static readonly int STATUS_INFO_LENGTH_MISMATCH = Convert.ToInt32("0xC0000004", 16);
         const int ERROR_INSUFFICIENT_BUFFER = 0x0000007A;
         static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 
@@ -636,9 +658,21 @@ namespace DebugUpdateProcVariant
 
         static IntPtr GetCurrentProcessTokenPointer()
         {
-            uint ntstatus;
+            int error;
+            int ntstatus;
             var pObject = IntPtr.Zero;
-            var hToken = WindowsIdentity.GetCurrent().Token;
+
+            if (!OpenProcessToken(
+                Process.GetCurrentProcess().Handle,
+                TokenAccessFlags.MAXIMUM_ALLOWED,
+                out IntPtr hToken))
+            {
+                error = Marshal.GetLastWin32Error();
+                Console.WriteLine("[-] Failed to open current process token.");
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
+                return IntPtr.Zero;
+            }
 
             Console.WriteLine("[+] Got a handle of current process token.");
             Console.WriteLine("    |-> hToken: 0x{0}", hToken.ToString("X"));
@@ -662,10 +696,12 @@ namespace DebugUpdateProcVariant
                     Marshal.FreeHGlobal(infoBuffer);
             } while (ntstatus == STATUS_INFO_LENGTH_MISMATCH);
 
+            CloseHandle(hToken);
+
             if (ntstatus != STATUS_SUCCESS)
             {
                 Console.WriteLine("[-] Failed to get system information.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage((int)ntstatus, true));
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(ntstatus, true));
 
                 return IntPtr.Zero;
             }
@@ -748,37 +784,47 @@ namespace DebugUpdateProcVariant
 
         static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            var message = new StringBuilder();
-            var messageSize = 255;
-            FormatMessageFlags messageFlag;
-            IntPtr pNtdll;
-            message.Capacity = messageSize;
+            int nReturnedLength;
+            ProcessModuleCollection modules;
+            FormatMessageFlags dwFlags;
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            IntPtr pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                pNtdll = LoadLibrary("ntdll.dll");
-                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                modules = Process.GetCurrentProcess().Modules;
+
+                foreach (ProcessModule mod in modules)
+                {
+                    if (string.Compare(
+                        Path.GetFileName(mod.FileName),
+                        "ntdll.dll",
+                        StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        pNtdll = mod.BaseAddress;
+                        break;
+                    }
+                }
+
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
                     FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
             else
             {
-                pNtdll = IntPtr.Zero;
-                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            uint ret = FormatMessage(
-                messageFlag,
+            nReturnedLength = FormatMessage(
+                dwFlags,
                 pNtdll,
                 code,
                 0,
                 message,
-                messageSize,
+                nSizeMesssage,
                 IntPtr.Zero);
 
-            if (isNtStatus)
-                FreeLibrary(pNtdll);
-
-            if (ret == 0)
+            if (nReturnedLength == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }

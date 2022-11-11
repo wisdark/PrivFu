@@ -1,30 +1,32 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using SwitchPriv.Interop;
 
 namespace SwitchPriv.Library
 {
-    class Helpers
+    internal class Helpers
     {
         public static string ConvertIndexToMandatoryLevelSid(int index)
         {
             if (index == (int)Globals.MANDATORY_LEVEL_INDEX.UNTRUSTED_MANDATORY_LEVEL)
-                return Win32Const.UNTRUSTED_MANDATORY_LEVEL;
+                return Win32Consts.UNTRUSTED_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.LOW_MANDATORY_LEVEL)
-                return Win32Const.LOW_MANDATORY_LEVEL;
+                return Win32Consts.LOW_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_MANDATORY_LEVEL)
-                return Win32Const.MEDIUM_MANDATORY_LEVEL;
+                return Win32Consts.MEDIUM_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_PLUS_MANDATORY_LEVEL)
-                return Win32Const.MEDIUM_PLUS_MANDATORY_LEVEL;
+                return Win32Consts.MEDIUM_PLUS_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.HIGH_MANDATORY_LEVEL)
-                return Win32Const.HIGH_MANDATORY_LEVEL;
+                return Win32Consts.HIGH_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SYSTEM_MANDATORY_LEVEL)
-                return Win32Const.SYSTEM_MANDATORY_LEVEL;
+                return Win32Consts.SYSTEM_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.PROTECTED_MANDATORY_LEVEL)
-                return Win32Const.PROTECTED_MANDATORY_LEVEL;
+                return Win32Consts.PROTECTED_MANDATORY_LEVEL;
             else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SECURE_MANDATORY_LEVEL)
-                return Win32Const.SECURE_MANDATORY_LEVEL;
+                return Win32Consts.SECURE_MANDATORY_LEVEL;
             else
                 return null;
         }
@@ -34,21 +36,21 @@ namespace SwitchPriv.Library
         {
             StringComparison opt = StringComparison.OrdinalIgnoreCase;
 
-            if (string.Compare(stringSid, Win32Const.UNTRUSTED_MANDATORY_LEVEL, opt) == 0)
+            if (string.Compare(stringSid, Win32Consts.UNTRUSTED_MANDATORY_LEVEL, opt) == 0)
                 return "UNTRUSTED_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.LOW_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.LOW_MANDATORY_LEVEL, opt) == 0)
                 return "LOW_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.MEDIUM_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.MEDIUM_MANDATORY_LEVEL, opt) == 0)
                 return "MEDIUM_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.MEDIUM_PLUS_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.MEDIUM_PLUS_MANDATORY_LEVEL, opt) == 0)
                 return "MEDIUM_PLUS_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.HIGH_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.HIGH_MANDATORY_LEVEL, opt) == 0)
                 return "HIGH_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.SYSTEM_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.SYSTEM_MANDATORY_LEVEL, opt) == 0)
                 return "SYSTEM_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.PROTECTED_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.PROTECTED_MANDATORY_LEVEL, opt) == 0)
                 return "PROTECTED_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Const.SECURE_MANDATORY_LEVEL, opt) == 0)
+            else if (string.Compare(stringSid, Win32Consts.SECURE_MANDATORY_LEVEL, opt) == 0)
                 return "SECURE_MANDATORY_LEVEL";
             else
                 return null;
@@ -136,7 +138,7 @@ namespace SwitchPriv.Library
 
         public static IntPtr GetInformationFromToken(
             IntPtr hToken,
-            Win32Const.TOKEN_INFORMATION_CLASS tokenInfoClass)
+            TOKEN_INFORMATION_CLASS tokenInfoClass)
         {
             bool status;
             int error;
@@ -147,13 +149,13 @@ namespace SwitchPriv.Library
             {
                 buffer = Marshal.AllocHGlobal(length);
                 ZeroMemory(buffer, length);
-                status = Win32Api.GetTokenInformation(
+                status = NativeMethods.GetTokenInformation(
                     hToken, tokenInfoClass, buffer, length, out length);
                 error = Marshal.GetLastWin32Error();
 
                 if (!status)
                     Marshal.FreeHGlobal(buffer);
-            } while (!status && (error == Win32Const.ERROR_INSUFFICIENT_BUFFER || error == Win32Const.ERROR_BAD_LENGTH));
+            } while (!status && (error == Win32Consts.ERROR_INSUFFICIENT_BUFFER || error == Win32Consts.ERROR_BAD_LENGTH));
 
             if (!status)
                 return IntPtr.Zero;
@@ -164,11 +166,11 @@ namespace SwitchPriv.Library
 
         public static bool GetPrivilegeLuid(
             string privilegeName,
-            out Win32Struct.LUID luid)
+            out LUID luid)
         {
             int error;
 
-            if (!Win32Api.LookupPrivilegeValue(
+            if (!NativeMethods.LookupPrivilegeValue(
                 null,
                 privilegeName,
                 out luid))
@@ -184,13 +186,13 @@ namespace SwitchPriv.Library
         }
 
 
-        public static string GetPrivilegeName(Win32Struct.LUID priv)
+        public static string GetPrivilegeName(LUID priv)
         {
             int error;
             int cchName = 255;
             StringBuilder privilegeName = new StringBuilder(255);
 
-            if (!Win32Api.LookupPrivilegeName(
+            if (!NativeMethods.LookupPrivilegeName(
                 null,
                 ref priv,
                 privilegeName,
@@ -209,37 +211,47 @@ namespace SwitchPriv.Library
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            var message = new StringBuilder();
-            var messageSize = 255;
-            Win32Const.FormatMessageFlags messageFlag;
-            IntPtr pNtdll;
-            message.Capacity = messageSize;
+            int nReturnedLength;
+            ProcessModuleCollection modules;
+            FormatMessageFlags dwFlags;
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            IntPtr pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                pNtdll = Win32Api.LoadLibrary("ntdll.dll");
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
-                    Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                modules = Process.GetCurrentProcess().Modules;
+
+                foreach (ProcessModule mod in modules)
+                {
+                    if (string.Compare(
+                        Path.GetFileName(mod.FileName),
+                        "ntdll.dll",
+                        StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        pNtdll = mod.BaseAddress;
+                        break;
+                    }
+                }
+
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
             else
             {
-                pNtdll = IntPtr.Zero;
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            uint ret = Win32Api.FormatMessage(
-                messageFlag,
+            nReturnedLength = NativeMethods.FormatMessage(
+                dwFlags,
                 pNtdll,
                 code,
                 0,
                 message,
-                messageSize,
+                nSizeMesssage,
                 IntPtr.Zero);
 
-            if (isNtStatus)
-                Win32Api.FreeLibrary(pNtdll);
-
-            if (ret == 0)
+            if (nReturnedLength == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }
@@ -255,7 +267,7 @@ namespace SwitchPriv.Library
 
         public static bool IsPrivilegeEnabled(
             IntPtr hToken,
-            Win32Struct.LUID priv,
+            LUID priv,
             out bool isEnabled)
         {
             int error;
@@ -264,14 +276,14 @@ namespace SwitchPriv.Library
             if (hToken == IntPtr.Zero)
                 return false;
 
-            var privSet = new Win32Struct.PRIVILEGE_SET(1, Win32Const.PRIVILEGE_SET_ALL_NECESSARY);
+            var privSet = new PRIVILEGE_SET(1, Win32Consts.PRIVILEGE_SET_ALL_NECESSARY);
             privSet.Privilege[0].Luid = priv;
-            privSet.Privilege[0].Attributes = (uint)Win32Const.PrivilegeAttributeFlags.SE_PRIVILEGE_ENABLED;
+            privSet.Privilege[0].Attributes = (uint)PrivilegeAttributeFlags.SE_PRIVILEGE_ENABLED;
 
             IntPtr pPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(privSet));
             Marshal.StructureToPtr(privSet, pPrivileges, true);
 
-            if (!Win32Api.PrivilegeCheck(
+            if (!NativeMethods.PrivilegeCheck(
                 hToken,
                 pPrivileges,
                 out isEnabled))

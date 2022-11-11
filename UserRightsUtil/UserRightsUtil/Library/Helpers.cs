@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,11 +8,11 @@ using UserRightsUtil.Interop;
 
 namespace UserRightsUtil.Library
 {
-    class Helpers
+    internal class Helpers
     {
         public static string ConvertAccountNameToSidString(
             ref string accountName,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
             int error;
             bool status;
@@ -59,7 +61,7 @@ namespace UserRightsUtil.Library
                 pSid = Marshal.AllocHGlobal(cbSid);
                 ZeroMemory(pSid, cbSid);
 
-                status = Win32Api.LookupAccountName(
+                status = NativeMethods.LookupAccountName(
                     null,
                     accountName,
                     pSid,
@@ -74,25 +76,25 @@ namespace UserRightsUtil.Library
                     referencedDomainName.Clear();
                     Marshal.FreeHGlobal(pSid);
                 }
-            } while (!status && error == Win32Const.ERROR_INSUFFICIENT_BUFFER);
+            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
 
             if (!status)
                 return null;
 
-            if (!Win32Api.IsValidSid(pSid))
+            if (!NativeMethods.IsValidSid(pSid))
                 return null;
 
             accountName = ConvertSidToAccountName(pSid, out peUse);
 
-            if (Win32Api.ConvertSidToStringSid(pSid, out string strSid))
+            if (NativeMethods.ConvertSidToStringSid(pSid, out string strSid))
             {
-                Win32Api.LocalFree(pSid);
+                NativeMethods.LocalFree(pSid);
 
                 return strSid;
             }
             else
             {
-                Win32Api.LocalFree(pSid);
+                NativeMethods.LocalFree(pSid);
 
                 return null;
             }
@@ -101,18 +103,19 @@ namespace UserRightsUtil.Library
 
         public static string ConvertSidStringToAccountName(
             ref string sid,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
             string accountName;
+            sid = sid.ToUpper();
 
-            if (!Win32Api.ConvertStringSidToSid(sid, out IntPtr pSid))
+            if (!NativeMethods.ConvertStringSidToSid(sid, out IntPtr pSid))
             {
                 peUse = 0;
                 return null;
             }
 
             accountName = ConvertSidToAccountName(pSid, out peUse);
-            Win32Api.LocalFree(pSid);
+            NativeMethods.LocalFree(pSid);
 
             return accountName;
         }
@@ -120,9 +123,8 @@ namespace UserRightsUtil.Library
 
         public static string ConvertSidToAccountName(
             IntPtr pSid,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
-            StringComparison opt = StringComparison.OrdinalIgnoreCase;
             bool status;
             int error;
             StringBuilder pName = new StringBuilder();
@@ -135,7 +137,7 @@ namespace UserRightsUtil.Library
                 pName.Capacity = cchName;
                 pReferencedDomainName.Capacity = cchReferencedDomainName;
 
-                status = Win32Api.LookupAccountSid(
+                status = NativeMethods.LookupAccountSid(
                     null,
                     pSid,
                     pName,
@@ -150,14 +152,22 @@ namespace UserRightsUtil.Library
                     pName.Clear();
                     pReferencedDomainName.Clear();
                 }
-            } while (!status && error == Win32Const.ERROR_INSUFFICIENT_BUFFER);
+            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
 
             if (!status)
                 return null;
 
-            if (string.Compare(pName.ToString(), pReferencedDomainName.ToString(), opt) == 0)
+            if (peUse == SID_NAME_USE.SidTypeDomain)
             {
                 return pReferencedDomainName.ToString();
+            }
+            else if (cchName == 0)
+            {
+                return pReferencedDomainName.ToString();
+            }
+            else if (cchReferencedDomainName == 0)
+            {
+                return pName.ToString();
             }
             else
             {
@@ -170,37 +180,47 @@ namespace UserRightsUtil.Library
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            var message = new StringBuilder();
-            var messageSize = 255;
-            Win32Const.FormatMessageFlags messageFlag;
-            IntPtr pNtdll;
-            message.Capacity = messageSize;
+            int nReturnedLength;
+            ProcessModuleCollection modules;
+            FormatMessageFlags dwFlags;
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            IntPtr pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                pNtdll = Win32Api.LoadLibrary("ntdll.dll");
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
-                    Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                modules = Process.GetCurrentProcess().Modules;
+
+                foreach (ProcessModule mod in modules)
+                {
+                    if (string.Compare(
+                        Path.GetFileName(mod.FileName),
+                        "ntdll.dll",
+                        StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        pNtdll = mod.BaseAddress;
+                        break;
+                    }
+                }
+
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
             else
             {
-                pNtdll = IntPtr.Zero;
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            uint ret = Win32Api.FormatMessage(
-                messageFlag,
+            nReturnedLength = NativeMethods.FormatMessage(
+                dwFlags,
                 pNtdll,
                 code,
                 0,
                 message,
-                messageSize,
+                nSizeMesssage,
                 IntPtr.Zero);
 
-            if (isNtStatus)
-                Win32Api.FreeLibrary(pNtdll);
-
-            if (ret == 0)
+            if (nReturnedLength == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }

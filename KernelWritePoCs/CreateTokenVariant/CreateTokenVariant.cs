@@ -700,6 +700,12 @@ namespace CreateTokenVariant
             string lpName,
             out LUID lpLuid);
 
+        [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool OpenProcessToken(
+            IntPtr hProcess,
+            TokenAccessFlags DesiredAccess,
+            out IntPtr hToken);
+
         /*
          * kernel32.dll
          */
@@ -728,7 +734,7 @@ namespace CreateTokenVariant
             IntPtr lpOverlapped);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern uint FormatMessage(
+        static extern int FormatMessage(
             FormatMessageFlags dwFlags,
             IntPtr lpSource,
             int dwMessageId,
@@ -738,13 +744,7 @@ namespace CreateTokenVariant
             IntPtr Arguments);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool FreeLibrary(IntPtr hLibModule);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
         static extern int GetCurrentThreadId();
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
-        static extern IntPtr LoadLibrary(string lpFileName);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern IntPtr LocalFree(IntPtr hMem);
@@ -758,7 +758,7 @@ namespace CreateTokenVariant
          * ntdll.dll
          */
         [DllImport("ntdll.dll", SetLastError = true)]
-        static extern uint NtQuerySystemInformation(
+        static extern int NtQuerySystemInformation(
             SYSTEM_INFORMATION_CLASS SystemInformationClass,
             IntPtr SystemInformation,
             int SystemInformationLength,
@@ -771,7 +771,7 @@ namespace CreateTokenVariant
             ref int BuildNumber);
 
         [DllImport("ntdll.dll")]
-        static extern uint ZwCreateToken(
+        static extern int ZwCreateToken(
             out IntPtr TokenHandle,
             TokenAccessFlags DesiredAccess,
             ref OBJECT_ATTRIBUTES ObjectAttributes,
@@ -787,8 +787,8 @@ namespace CreateTokenVariant
             ref TOKEN_SOURCE TokenSource);
 
         // Windows Consts
-        const uint STATUS_SUCCESS = 0;
-        const uint STATUS_INFO_LENGTH_MISMATCH = 0xC0000004;
+        const int STATUS_SUCCESS = 0;
+        static readonly int STATUS_INFO_LENGTH_MISMATCH = Convert.ToInt32("0xC0000004", 16);
         const int ERROR_BAD_LENGTH = 0x00000018;
         const int ERROR_INSUFFICIENT_BUFFER = 0x0000007A;
         static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
@@ -1093,7 +1093,7 @@ namespace CreateTokenVariant
             Marshal.StructureToPtr(sqos, pSqos, true);
             oa.SecurityQualityOfService = pSqos;
 
-            uint ntstatus = ZwCreateToken(
+            int ntstatus = ZwCreateToken(
                 out IntPtr hToken,
                 TokenAccessFlags.TOKEN_ALL_ACCESS,
                 ref oa,
@@ -1114,7 +1114,7 @@ namespace CreateTokenVariant
             if (ntstatus != STATUS_SUCCESS)
             {
                 Console.WriteLine("[-] Failed to create elevated token.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage((int)ntstatus, true));
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(ntstatus, true));
 
                 return IntPtr.Zero;
             }
@@ -1204,9 +1204,21 @@ namespace CreateTokenVariant
 
         static IntPtr GetCurrentProcessTokenPointer()
         {
-            uint ntstatus;
+            int error;
+            int ntstatus;
             var pObject = IntPtr.Zero;
-            var hToken = WindowsIdentity.GetCurrent().Token;
+
+            if (!OpenProcessToken(
+                Process.GetCurrentProcess().Handle,
+                TokenAccessFlags.MAXIMUM_ALLOWED,
+                out IntPtr hToken))
+            {
+                error = Marshal.GetLastWin32Error();
+                Console.WriteLine("[-] Failed to open current process token.");
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
+
+                return IntPtr.Zero;
+            }
 
             Console.WriteLine("[+] Got a handle of current process token.");
             Console.WriteLine("    |-> hToken: 0x{0}", hToken.ToString("X"));
@@ -1230,10 +1242,12 @@ namespace CreateTokenVariant
                     Marshal.FreeHGlobal(infoBuffer);
             } while (ntstatus == STATUS_INFO_LENGTH_MISMATCH);
 
+            CloseHandle(hToken);
+
             if (ntstatus != STATUS_SUCCESS)
             {
                 Console.WriteLine("[-] Failed to get system information.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage((int)ntstatus, true));
+                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(ntstatus, true));
 
                 return IntPtr.Zero;
             }
@@ -1344,37 +1358,47 @@ namespace CreateTokenVariant
 
         static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            var message = new StringBuilder();
-            var messageSize = 255;
-            FormatMessageFlags messageFlag;
-            IntPtr pNtdll;
-            message.Capacity = messageSize;
+            int nReturnedLength;
+            ProcessModuleCollection modules;
+            FormatMessageFlags dwFlags;
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            IntPtr pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                pNtdll = LoadLibrary("ntdll.dll");
-                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                modules = Process.GetCurrentProcess().Modules;
+
+                foreach (ProcessModule mod in modules)
+                {
+                    if (string.Compare(
+                        Path.GetFileName(mod.FileName),
+                        "ntdll.dll",
+                        StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        pNtdll = mod.BaseAddress;
+                        break;
+                    }
+                }
+
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
                     FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
             else
             {
-                pNtdll = IntPtr.Zero;
-                messageFlag = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            uint ret = FormatMessage(
-                messageFlag,
+            nReturnedLength = FormatMessage(
+                dwFlags,
                 pNtdll,
                 code,
                 0,
                 message,
-                messageSize,
+                nSizeMesssage,
                 IntPtr.Zero);
 
-            if (isNtStatus)
-                FreeLibrary(pNtdll);
-
-            if (ret == 0)
+            if (nReturnedLength == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }

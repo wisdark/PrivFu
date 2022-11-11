@@ -4,7 +4,7 @@ using TrustExec.Interop;
 
 namespace TrustExec.Library
 {
-    class Modules
+    internal class Modules
     {
         public static bool AddVirtualAccount(
             string domain,
@@ -23,23 +23,23 @@ namespace TrustExec.Library
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
             var privs = new string[] {
-                Win32Const.SE_DEBUG_NAME,
-                Win32Const.SE_IMPERSONATE_NAME
+                Win32Consts.SE_DEBUG_NAME,
+                Win32Consts.SE_IMPERSONATE_NAME
             };
 
             if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
                 return false;
 
             privs = new string[] {
-                Win32Const.SE_ASSIGNPRIMARYTOKEN_NAME,
-                Win32Const.SE_INCREASE_QUOTA_NAME
+                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
+                Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
             if (!Utilities.ImpersonateAsSmss(privs))
                 return false;
 
             bool status = Utilities.AddVirtualAccount(domain, username, domainRid);
-            Win32Api.RevertToSelf();
+            NativeMethods.RevertToSelf();
 
             return status;
         }
@@ -66,7 +66,7 @@ namespace TrustExec.Library
                     domain = Environment.MachineName;
 
                 if (!string.IsNullOrEmpty(domain) && !string.IsNullOrEmpty(username))
-                    accountName = string.Format("{0}\\{1}", domain, username);
+                    accountName = string.Format(@"{0}\{1}", domain, username);
                 else if (!string.IsNullOrEmpty(domain))
                     accountName = domain;
                 else if (!string.IsNullOrEmpty(username))
@@ -76,7 +76,7 @@ namespace TrustExec.Library
 
                 result = Helpers.ConvertAccountNameToSidString(
                     ref accountName,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out SID_NAME_USE peUse);
 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -101,7 +101,7 @@ namespace TrustExec.Library
                 sid = sid.ToUpper();
                 result = Helpers.ConvertSidStringToAccountName(
                     ref sid,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out SID_NAME_USE peUse);
 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -144,74 +144,84 @@ namespace TrustExec.Library
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
             var privs = new string[] {
-                Win32Const.SE_DEBUG_NAME,
-                Win32Const.SE_IMPERSONATE_NAME
+                Win32Consts.SE_DEBUG_NAME,
+                Win32Consts.SE_IMPERSONATE_NAME
             };
 
             if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
                 return false;
 
             privs = new string[] {
-                Win32Const.SE_ASSIGNPRIMARYTOKEN_NAME,
-                Win32Const.SE_INCREASE_QUOTA_NAME
+                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
+                Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
             if (!Utilities.ImpersonateAsSmss(privs))
                 return false;
 
             bool status = Utilities.RemoveVirtualAccount(domain, username);
-            Win32Api.RevertToSelf();
+            NativeMethods.RevertToSelf();
 
             return status;
         }
 
 
-        public static bool RunTrustedInstallerProcess(string command, bool full)
+        public static bool RunTrustedInstallerProcess(string command, string extraSidsString, bool full)
         {
             string execute;
+            string[] extraSidsArray;
 
             if (string.IsNullOrEmpty(command))
             {
-                execute = "C:\\Windows\\System32\\cmd.exe";
+                execute = @"C:\Windows\System32\cmd.exe";
             }
             else
             {
-                execute = string.Format(
-                    "C:\\Windows\\System32\\cmd.exe /c \"{0}\"",
-                    command);
+                execute = command;
             }
 
             Console.WriteLine();
+
+            if (string.IsNullOrEmpty(extraSidsString))
+            {
+                extraSidsArray = new string[] { };
+            }
+            else
+            {
+                extraSidsArray = Helpers.ParseGroupSids(extraSidsString);
+            }
+
             Console.WriteLine("[>] Trying to get SYSTEM.");
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
             var privs = new string[] {
-                Win32Const.SE_DEBUG_NAME,
-                Win32Const.SE_IMPERSONATE_NAME
+                Win32Consts.SE_DEBUG_NAME,
+                Win32Consts.SE_IMPERSONATE_NAME
             };
 
             if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
                 return false;
 
             privs = new string[] {
-                Win32Const.SE_CREATE_TOKEN_NAME,
-                Win32Const.SE_ASSIGNPRIMARYTOKEN_NAME
+                Win32Consts.SE_CREATE_TOKEN_NAME,
+                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME
             };
 
             if (!Utilities.ImpersonateAsSmss(privs))
                 return false;
 
             IntPtr hToken = Utilities.CreateTrustedInstallerToken(
-                Win32Const.TOKEN_TYPE.TokenPrimary,
-                Win32Const.SECURITY_IMPERSONATION_LEVEL.SecurityAnonymous,
+                TOKEN_TYPE.TokenPrimary,
+                SECURITY_IMPERSONATION_LEVEL.SecurityAnonymous,
+                extraSidsArray,
                 full);
 
             if (hToken == IntPtr.Zero)
                 return false;
 
             bool status = Utilities.CreateTokenAssignedProcess(hToken, execute);
-            Win32Api.CloseHandle(hToken);
-            Win32Api.RevertToSelf();
+            NativeMethods.CloseHandle(hToken);
+            NativeMethods.RevertToSelf();
 
             return status;
         }
@@ -222,9 +232,11 @@ namespace TrustExec.Library
             string username,
             int domainRid,
             string command,
+            string extraSidsString,
             bool fullPrivilege)
         {
             string execute;
+            string[] extraSidsArray;
 
             if (string.IsNullOrEmpty(domain))
             {
@@ -242,30 +254,38 @@ namespace TrustExec.Library
 
             if (string.IsNullOrEmpty(command))
             {
-                execute = "C:\\Windows\\System32\\cmd.exe";
+                execute = @"C:\Windows\System32\cmd.exe";
             }
             else
             {
-                execute = string.Format(
-                    "C:\\Windows\\System32\\cmd.exe /c \"{0}\"",
-                    command);
+                execute = command;
             }
 
             Console.WriteLine();
+
+            if (string.IsNullOrEmpty(extraSidsString))
+            {
+                extraSidsArray = new string[] { };
+            }
+            else
+            {
+                extraSidsArray = Helpers.ParseGroupSids(extraSidsString);
+            }
+
             Console.WriteLine("[>] Trying to get SYSTEM.");
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
             var privs = new string[] {
-                Win32Const.SE_DEBUG_NAME,
-                Win32Const.SE_IMPERSONATE_NAME
+                Win32Consts.SE_DEBUG_NAME,
+                Win32Consts.SE_IMPERSONATE_NAME
             };
 
             if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
                 return false;
 
             privs = new string[] {
-                Win32Const.SE_ASSIGNPRIMARYTOKEN_NAME,
-                Win32Const.SE_INCREASE_QUOTA_NAME
+                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
+                Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
             if (!Utilities.ImpersonateAsSmss(privs))
@@ -274,7 +294,8 @@ namespace TrustExec.Library
             IntPtr hToken = Utilities.CreateTrustedInstallerTokenWithVirtualLogon(
                 domain,
                 username,
-                domainRid);
+                domainRid,
+                extraSidsArray);
 
             if (hToken == IntPtr.Zero)
                 return false;
@@ -283,8 +304,8 @@ namespace TrustExec.Library
                 Utilities.EnableAllPrivileges(hToken);
 
             bool status = Utilities.CreateTokenAssignedProcess(hToken, execute);
-            Win32Api.CloseHandle(hToken);
-            Win32Api.RevertToSelf();
+            NativeMethods.CloseHandle(hToken);
+            NativeMethods.RevertToSelf();
 
             return status;
         }

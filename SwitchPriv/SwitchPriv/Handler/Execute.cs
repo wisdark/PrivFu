@@ -3,7 +3,7 @@ using SwitchPriv.Library;
 
 namespace SwitchPriv.Handler
 {
-    class Execute
+    internal class Execute
     {
         public static void Run(CommandLineParser options)
         {
@@ -109,6 +109,27 @@ namespace SwitchPriv.Handler
                     }
 
                     Modules.RemoveTokenPrivilege(pid, priv, options.GetFlag("system"));
+                }
+            }
+            else if (!string.IsNullOrEmpty(options.GetValue("find")))
+            {
+                if (string.Compare(options.GetValue("find"), "All", opt) == 0)
+                {
+                    Console.WriteLine("[!] Specifies only one privilege at a time for this option.");
+                }
+                else
+                {
+                    priv = Helpers.GetFullPrivilegeName(options.GetValue("find"));
+
+                    if (string.IsNullOrEmpty(priv))
+                    {
+                        options.GetHelp();
+                        Console.WriteLine("[-] Failed to specify the requested token privilege.\n");
+
+                        return;
+                    }
+
+                    Modules.FindPrivilegedProcess(priv, options.GetFlag("system"));
                 }
             }
             else if (!string.IsNullOrEmpty(options.GetValue("integrity")))

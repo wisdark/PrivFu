@@ -1,20 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using UserRightsUtil.Interop;
 
 namespace UserRightsUtil.Library
 {
-    class Modules
+    internal class Modules
     {
         public static bool EnumerateUserRights(
             string domain,
             string username,
             string strSid)
         {
-            List<Win32Const.Rights> userRights;
+            List<Rights> userRights;
             string accountName;
+            SID_NAME_USE peUse;
 
             if (!string.IsNullOrEmpty(username) &&
                 !string.IsNullOrEmpty(strSid))
@@ -36,7 +35,7 @@ namespace UserRightsUtil.Library
 
                 strSid = Helpers.ConvertAccountNameToSidString(
                     ref accountName,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -44,9 +43,12 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser &&
+                    peUse != SID_NAME_USE.SidTypeGroup &&
+                    peUse != SID_NAME_USE.SidTypeWellKnownGroup &&
+                    peUse != SID_NAME_USE.SidTypeAlias)
                 {
-                    Console.WriteLine("\n[-] Specified account is not user account.\n");
+                    Console.WriteLine("\n[-] Specified account is not user or group account.\n");
 
                     return false;
                 }
@@ -55,7 +57,7 @@ namespace UserRightsUtil.Library
             {
                 accountName = Helpers.ConvertSidStringToAccountName(
                     ref strSid,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -63,9 +65,12 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser &&
+                    peUse != SID_NAME_USE.SidTypeGroup &&
+                    peUse != SID_NAME_USE.SidTypeWellKnownGroup &&
+                    peUse != SID_NAME_USE.SidTypeAlias)
                 {
-                    Console.WriteLine("\n[-] Specified account is not user account.\n");
+                    Console.WriteLine("\n[-] Specified account is not user or group account.\n");
 
                     return false;
                 }
@@ -79,10 +84,11 @@ namespace UserRightsUtil.Library
 
             Console.WriteLine();
             Console.WriteLine("[>] Trying to enumerate user rights.");
-            Console.WriteLine("    |-> Username : {0}", accountName);
-            Console.WriteLine("    |-> SID      : {0}", strSid);
+            Console.WriteLine("    |-> Account Name : {0}", accountName);
+            Console.WriteLine("    |-> SID          : {0}", strSid);
+            Console.WriteLine("    |-> Account Type : {0}", peUse.ToString());
 
-            Win32Api.ConvertStringSidToSid(strSid, out IntPtr pSid);
+            NativeMethods.ConvertStringSidToSid(strSid, out IntPtr pSid);
 
             userRights = Utilities.GetUserRights(pSid);
 
@@ -107,7 +113,7 @@ namespace UserRightsUtil.Library
 
 
         public static bool EnumerateUsersWithRights(
-            Win32Const.Rights right)
+            Rights right)
         {
             Console.WriteLine();
             Console.WriteLine("[>] Trying to find users with {0}.", right.ToString());
@@ -137,12 +143,13 @@ namespace UserRightsUtil.Library
             string domain,
             string username,
             string strSid,
-            Win32Const.Rights userRight)
+            Rights userRight)
         {
             IntPtr hLsa;
             string accountName;
-            var policy = Win32Const.PolicyAccessRights.POLICY_LOOKUP_NAMES |
-                Win32Const.PolicyAccessRights.POLICY_CREATE_ACCOUNT;
+            SID_NAME_USE peUse;
+            var policy = PolicyAccessRights.POLICY_LOOKUP_NAMES |
+                PolicyAccessRights.POLICY_CREATE_ACCOUNT;
 
             if (!string.IsNullOrEmpty(username) &&
                 !string.IsNullOrEmpty(strSid))
@@ -164,7 +171,7 @@ namespace UserRightsUtil.Library
 
                 strSid = Helpers.ConvertAccountNameToSidString(
                     ref accountName,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -172,9 +179,10 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser &&
+                    peUse != SID_NAME_USE.SidTypeGroup)
                 {
-                    Console.WriteLine("\n[-] Specified account is not user account.\n");
+                    Console.WriteLine("\n[-] Specified account is not user or non well-known group account.\n");
 
                     return false;
                 }
@@ -183,7 +191,7 @@ namespace UserRightsUtil.Library
             {
                 accountName = Helpers.ConvertSidStringToAccountName(
                     ref strSid,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -191,9 +199,10 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser &&
+                    peUse != SID_NAME_USE.SidTypeGroup)
                 {
-                    Console.WriteLine("\n[-] Specified account is not user account.\n");
+                    Console.WriteLine("\n[-] Specified account is not user or non well-known group account.\n");
 
                     return false;
                 }
@@ -207,8 +216,9 @@ namespace UserRightsUtil.Library
 
             Console.WriteLine();
             Console.WriteLine("[>] Target account information:");
-            Console.WriteLine("    |-> Username : {0}", accountName);
-            Console.WriteLine("    |-> SID      : {0}", strSid);
+            Console.WriteLine("    |-> Account Name : {0}", accountName);
+            Console.WriteLine("    |-> SID          : {0}", strSid);
+            Console.WriteLine("    |-> Account Type : {0}", peUse.ToString());
 
             hLsa = Utilities.GetSystemLsaHandle(policy);
 
@@ -219,7 +229,7 @@ namespace UserRightsUtil.Library
                 hLsa,
                 strSid,
                 userRight);
-            Win32Api.LsaClose(hLsa);
+            NativeMethods.LsaClose(hLsa);
 
             return status;
         }
@@ -256,7 +266,7 @@ namespace UserRightsUtil.Library
 
                 result = Helpers.ConvertAccountNameToSidString(
                     ref accountName,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out SID_NAME_USE peUse);
 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -280,7 +290,7 @@ namespace UserRightsUtil.Library
             {
                 result = Helpers.ConvertSidStringToAccountName(
                     ref sid,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out SID_NAME_USE peUse);
 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -313,11 +323,12 @@ namespace UserRightsUtil.Library
             string domain,
             string username,
             string strSid,
-            Win32Const.Rights userRight)
+            Rights userRight)
         {
             IntPtr hLsa;
             string accountName;
-            var policy = Win32Const.PolicyAccessRights.POLICY_LOOKUP_NAMES;
+            SID_NAME_USE peUse;
+            var policy = PolicyAccessRights.POLICY_LOOKUP_NAMES;
 
             if (!string.IsNullOrEmpty(username) &&
                 !string.IsNullOrEmpty(strSid))
@@ -339,7 +350,7 @@ namespace UserRightsUtil.Library
 
                 strSid = Helpers.ConvertAccountNameToSidString(
                     ref accountName,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -347,7 +358,7 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser)
                 {
                     Console.WriteLine("\n[-] Specified account is not user account.\n");
 
@@ -358,7 +369,7 @@ namespace UserRightsUtil.Library
             {
                 accountName = Helpers.ConvertSidStringToAccountName(
                     ref strSid,
-                    out Win32Const.SID_NAME_USE peUse);
+                    out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -366,7 +377,7 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != Win32Const.SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.SidTypeUser)
                 {
                     Console.WriteLine("\n[-] Specified account is not user account.\n");
 
@@ -382,8 +393,9 @@ namespace UserRightsUtil.Library
 
             Console.WriteLine();
             Console.WriteLine("[>] Target account information:");
-            Console.WriteLine("    |-> Username : {0}", accountName);
-            Console.WriteLine("    |-> SID      : {0}", strSid);
+            Console.WriteLine("    |-> Account Name : {0}", accountName);
+            Console.WriteLine("    |-> SID          : {0}", strSid);
+            Console.WriteLine("    |-> Account Type : {0}", peUse.ToString());
 
             hLsa = Utilities.GetSystemLsaHandle(policy);
 
@@ -393,8 +405,8 @@ namespace UserRightsUtil.Library
             bool status = Utilities.RevokeSingleUserRight(
                 hLsa,
                 strSid,
-                Win32Const.Rights.SeTcbPrivilege);
-            Win32Api.LsaClose(hLsa);
+                userRight);
+            NativeMethods.LsaClose(hLsa);
 
             return status;
         }

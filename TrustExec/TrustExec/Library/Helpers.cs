@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,36 +9,36 @@ using TrustExec.Interop;
 
 namespace TrustExec.Library
 {
-    class Helpers
+    internal class Helpers
     {
-        public static uint AddSidMapping(
+        public static int AddSidMapping(
             string domain,
             string username,
             IntPtr pSid)
         {
-            uint ntstatus;
-            var input = new Win32Struct.LSA_SID_NAME_MAPPING_OPERATION_ADD_INPUT();
+            int ntstatus;
+            var input = new LSA_SID_NAME_MAPPING_OPERATION_ADD_INPUT();
 
             if (string.IsNullOrEmpty(domain) || pSid == IntPtr.Zero)
-                return UInt32.MaxValue;
+                return -1;
 
-            input.DomainName = new Win32Struct.UNICODE_STRING(domain);
+            input.DomainName = new UNICODE_STRING(domain);
 
             if (username != null)
-                input.AccountName = new Win32Struct.UNICODE_STRING(username);
+                input.AccountName = new UNICODE_STRING(username);
 
             input.Sid = pSid;
 
-            ntstatus = Win32Api.LsaManageSidNameMapping(
-                Win32Const.LSA_SID_NAME_MAPPING_OPERATION_TYPE.LsaSidNameMappingOperation_Add,
+            ntstatus = NativeMethods.LsaManageSidNameMapping(
+                LSA_SID_NAME_MAPPING_OPERATION_TYPE.LsaSidNameMappingOperation_Add,
                 input,
                 out IntPtr output);
 
             if (pSid != IntPtr.Zero)
-                Win32Api.LocalFree(pSid);
+                NativeMethods.LocalFree(pSid);
 
             if (output != IntPtr.Zero)
-                Win32Api.LsaFreeMemory(output);
+                NativeMethods.LsaFreeMemory(output);
 
             return ntstatus;
         }
@@ -43,7 +46,7 @@ namespace TrustExec.Library
 
         public static string ConvertAccountNameToSidString(
             ref string accountName,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
             int error;
             bool status;
@@ -71,7 +74,7 @@ namespace TrustExec.Library
                     if (domain == ".")
                     {
                         accountName = string.Format(
-                            "{0}\\{1}",
+                            @"{0}\{1}",
                             Environment.MachineName,
                             username);
                     }
@@ -92,7 +95,7 @@ namespace TrustExec.Library
                 pSid = Marshal.AllocHGlobal(cbSid);
                 ZeroMemory(pSid, cbSid);
 
-                status = Win32Api.LookupAccountName(
+                status = NativeMethods.LookupAccountName(
                     null,
                     accountName,
                     pSid,
@@ -107,46 +110,101 @@ namespace TrustExec.Library
                     referencedDomainName.Clear();
                     Marshal.FreeHGlobal(pSid);
                 }
-            } while (!status && error == Win32Const.ERROR_INSUFFICIENT_BUFFER);
+            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
 
             if (!status)
                 return null;
 
-            if (!Win32Api.IsValidSid(pSid))
+            if (!NativeMethods.IsValidSid(pSid))
                 return null;
 
             accountName = ConvertSidToAccountName(pSid, out peUse);
 
-            if (Win32Api.ConvertSidToStringSid(pSid, out string strSid))
+            if (NativeMethods.ConvertSidToStringSid(pSid, out string strSid))
             {
+                NativeMethods.LocalFree(pSid);
+
                 return strSid;
             }
             else
             {
+                NativeMethods.LocalFree(pSid);
+
                 return null;
             }
+        }
+
+
+        public static string[] ParseGroupSids(string extraSidsString)
+        {
+            var result = new List<string>();
+            var sidArray = extraSidsString.Split(',');
+            var regexSid = new Regex(
+                @"^S-1(-\d+)+$",
+                RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            string accountName;
+            string sid;
+
+            Console.WriteLine("[>] Parsing group SID(s).");
+
+            for (var idx = 0; idx < sidArray.Length; idx++)
+            {
+                sid = sidArray[idx].Trim();
+
+                if (!regexSid.IsMatch(sid))
+                {
+                    Console.WriteLine("[!] {0} is invalid format. Ignored.", sid);
+                    continue;
+                }
+
+                accountName = ConvertSidStringToAccountName(
+                    ref sid,
+                    out SID_NAME_USE peUse);
+
+                if (peUse == SID_NAME_USE.SidTypeAlias ||
+                    peUse == SID_NAME_USE.SidTypeWellKnownGroup)
+                {
+                    result.Add(sid);
+                    Console.WriteLine("[+] \"{0}\" is added as an extra group.", accountName);
+                    Console.WriteLine("    |-> SID  : {0}", sid);
+                    Console.WriteLine("    |-> Type : {0}", peUse);
+                }
+                else
+                {
+                    Console.WriteLine("[-] \"{0}\" is not group account. Ignored.", accountName);
+                    Console.WriteLine("    |-> SID  : {0}", sid);
+                    Console.WriteLine("    |-> Type : {0}", peUse);
+                }
+            }
+
+            return result.ToArray();
         }
 
 
         public static string ConvertSidStringToAccountName(
             ref string sid,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
-            if (!Win32Api.ConvertStringSidToSid(sid, out IntPtr pSid))
+            string accountName;
+            sid = sid.ToUpper();
+
+            if (!NativeMethods.ConvertStringSidToSid(sid, out IntPtr pSid))
             {
                 peUse = 0;
                 return null;
             }
 
-            return ConvertSidToAccountName(pSid, out peUse);
+            accountName = ConvertSidToAccountName(pSid, out peUse);
+            NativeMethods.LocalFree(pSid);
+
+            return accountName;
         }
 
 
         public static string ConvertSidToAccountName(
             IntPtr pSid,
-            out Win32Const.SID_NAME_USE peUse)
+            out SID_NAME_USE peUse)
         {
-            StringComparison opt = StringComparison.OrdinalIgnoreCase;
             bool status;
             int error;
             StringBuilder pName = new StringBuilder();
@@ -159,7 +217,7 @@ namespace TrustExec.Library
                 pName.Capacity = cchName;
                 pReferencedDomainName.Capacity = cchReferencedDomainName;
 
-                status = Win32Api.LookupAccountSid(
+                status = NativeMethods.LookupAccountSid(
                     null,
                     pSid,
                     pName,
@@ -174,14 +232,22 @@ namespace TrustExec.Library
                     pName.Clear();
                     pReferencedDomainName.Clear();
                 }
-            } while (!status && error == Win32Const.ERROR_INSUFFICIENT_BUFFER);
+            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
 
             if (!status)
                 return null;
 
-            if (string.Compare(pName.ToString(), pReferencedDomainName.ToString(), opt) == 0)
+            if (peUse == SID_NAME_USE.SidTypeDomain)
             {
                 return pReferencedDomainName.ToString();
+            }
+            else if (cchName == 0)
+            {
+                return pReferencedDomainName.ToString();
+            }
+            else if (cchReferencedDomainName == 0)
+            {
+                return pName.ToString();
             }
             else
             {
@@ -194,7 +260,7 @@ namespace TrustExec.Library
 
         public static IntPtr GetInformationFromToken(
             IntPtr hToken,
-            Win32Const.TOKEN_INFORMATION_CLASS tokenInfoClass)
+            TOKEN_INFORMATION_CLASS tokenInfoClass)
         {
             bool status;
             int error;
@@ -205,13 +271,13 @@ namespace TrustExec.Library
             {
                 buffer = Marshal.AllocHGlobal(length);
                 ZeroMemory(buffer, length);
-                status = Win32Api.GetTokenInformation(
+                status = NativeMethods.GetTokenInformation(
                     hToken, tokenInfoClass, buffer, length, out length);
                 error = Marshal.GetLastWin32Error();
 
                 if (!status)
                     Marshal.FreeHGlobal(buffer);
-            } while (!status && (error == Win32Const.ERROR_INSUFFICIENT_BUFFER || error == Win32Const.ERROR_BAD_LENGTH));
+            } while (!status && (error == Win32Consts.ERROR_INSUFFICIENT_BUFFER || error == Win32Consts.ERROR_BAD_LENGTH));
 
             if (!status)
                 return IntPtr.Zero;
@@ -222,11 +288,11 @@ namespace TrustExec.Library
 
         public static bool GetPrivilegeLuid(
             string privilegeName,
-            out Win32Struct.LUID luid)
+            out LUID luid)
         {
             int error;
 
-            if (!Win32Api.LookupPrivilegeValue(
+            if (!NativeMethods.LookupPrivilegeValue(
                 null,
                 privilegeName,
                 out luid))
@@ -242,13 +308,13 @@ namespace TrustExec.Library
         }
 
 
-        public static string GetPrivilegeName(Win32Struct.LUID priv)
+        public static string GetPrivilegeName(LUID priv)
         {
             int error;
             int cchName = 255;
             StringBuilder privilegeName = new StringBuilder(255);
 
-            if (!Win32Api.LookupPrivilegeName(
+            if (!NativeMethods.LookupPrivilegeName(
                 null,
                 ref priv,
                 privilegeName,
@@ -267,37 +333,47 @@ namespace TrustExec.Library
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
-            var message = new StringBuilder();
-            var messageSize = 255;
-            Win32Const.FormatMessageFlags messageFlag;
-            IntPtr pNtdll;
-            message.Capacity = messageSize;
+            int nReturnedLength;
+            ProcessModuleCollection modules;
+            FormatMessageFlags dwFlags;
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            IntPtr pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                pNtdll = Win32Api.LoadLibrary("ntdll.dll");
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
-                    Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                modules = Process.GetCurrentProcess().Modules;
+
+                foreach (ProcessModule mod in modules)
+                {
+                    if (string.Compare(
+                        Path.GetFileName(mod.FileName),
+                        "ntdll.dll",
+                        StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        pNtdll = mod.BaseAddress;
+                        break;
+                    }
+                }
+
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
+                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
             else
             {
-                pNtdll = IntPtr.Zero;
-                messageFlag = Win32Const.FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
-            uint ret = Win32Api.FormatMessage(
-                messageFlag,
+            nReturnedLength = NativeMethods.FormatMessage(
+                dwFlags,
                 pNtdll,
                 code,
                 0,
                 message,
-                messageSize,
+                nSizeMesssage,
                 IntPtr.Zero);
 
-            if (isNtStatus)
-                Win32Api.FreeLibrary(pNtdll);
-
-            if (ret == 0)
+            if (nReturnedLength == 0)
             {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             }
@@ -311,28 +387,28 @@ namespace TrustExec.Library
         }
 
 
-        public static uint RemoveSidMapping(
+        public static int RemoveSidMapping(
             string domain,
             string username)
         {
-            uint ntstatus;
-            var input = new Win32Struct.LSA_SID_NAME_MAPPING_OPERATION_REMOVE_INPUT();
+            int ntstatus;
+            var input = new LSA_SID_NAME_MAPPING_OPERATION_REMOVE_INPUT();
 
             if (string.IsNullOrEmpty(domain))
-                return UInt32.MaxValue;
+                return -1;
 
-            input.DomainName = new Win32Struct.UNICODE_STRING(domain);
+            input.DomainName = new UNICODE_STRING(domain);
 
             if (username != null)
-                input.AccountName = new Win32Struct.UNICODE_STRING(username);
+                input.AccountName = new UNICODE_STRING(username);
 
-            ntstatus = Win32Api.LsaManageSidNameMapping(
-                Win32Const.LSA_SID_NAME_MAPPING_OPERATION_TYPE.LsaSidNameMappingOperation_Remove,
+            ntstatus = NativeMethods.LsaManageSidNameMapping(
+                LSA_SID_NAME_MAPPING_OPERATION_TYPE.LsaSidNameMappingOperation_Remove,
                 input,
                 out IntPtr output);
 
             if (output != IntPtr.Zero)
-                Win32Api.LsaFreeMemory(output);
+                NativeMethods.LsaFreeMemory(output);
 
             return ntstatus;
         }
