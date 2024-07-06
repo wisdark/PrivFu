@@ -11,7 +11,6 @@ namespace UserRightsUtil.Library
             string username,
             string strSid)
         {
-            List<Rights> userRights;
             string accountName;
             SID_NAME_USE peUse;
 
@@ -24,11 +23,11 @@ namespace UserRightsUtil.Library
             else if (!string.IsNullOrEmpty(username))
             {
                 if (!string.IsNullOrEmpty(domain))
-                    accountName = string.Format("{0}\\{1}", domain, username);
+                    accountName = string.Format(@"{0}\{1}", domain, username);
                 else
                     accountName = username;
 
-                strSid = Helpers.ConvertAccountNameToSidString(ref accountName, out peUse);
+                strSid = Helpers.ConvertAccountNameToStringSid(ref accountName, out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -36,10 +35,10 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser &&
-                    peUse != SID_NAME_USE.SidTypeGroup &&
-                    peUse != SID_NAME_USE.SidTypeWellKnownGroup &&
-                    peUse != SID_NAME_USE.SidTypeAlias)
+                else if (peUse != SID_NAME_USE.User &&
+                    peUse != SID_NAME_USE.Group &&
+                    peUse != SID_NAME_USE.WellKnownGroup &&
+                    peUse != SID_NAME_USE.Alias)
                 {
                     Console.WriteLine("\n[-] Specified account is not user or group account.\n");
 
@@ -48,7 +47,7 @@ namespace UserRightsUtil.Library
             }
             else if (!string.IsNullOrEmpty(strSid))
             {
-                accountName = Helpers.ConvertSidStringToAccountName(ref strSid, out peUse);
+                accountName = Helpers.ConvertStringSidToAccountName(ref strSid, out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -56,10 +55,10 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser &&
-                    peUse != SID_NAME_USE.SidTypeGroup &&
-                    peUse != SID_NAME_USE.SidTypeWellKnownGroup &&
-                    peUse != SID_NAME_USE.SidTypeAlias)
+                else if (peUse != SID_NAME_USE.User &&
+                    peUse != SID_NAME_USE.Group &&
+                    peUse != SID_NAME_USE.WellKnownGroup &&
+                    peUse != SID_NAME_USE.Alias)
                 {
                     Console.WriteLine("\n[-] Specified account is not user or group account.\n");
 
@@ -81,7 +80,7 @@ namespace UserRightsUtil.Library
 
             NativeMethods.ConvertStringSidToSid(strSid, out IntPtr pSid);
 
-            userRights = Utilities.GetUserRights(pSid);
+            Utilities.GetUserRights(pSid, out List<Rights> userRights);
 
             if (userRights.Count > 0)
             {
@@ -154,7 +153,7 @@ namespace UserRightsUtil.Library
                 else
                     accountName = username;
 
-                strSid = Helpers.ConvertAccountNameToSidString(ref accountName, out peUse);
+                strSid = Helpers.ConvertAccountNameToStringSid(ref accountName, out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -162,8 +161,8 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser &&
-                    peUse != SID_NAME_USE.SidTypeGroup)
+                else if (peUse != SID_NAME_USE.User &&
+                    peUse != SID_NAME_USE.Group)
                 {
                     Console.WriteLine("\n[-] Specified account is not user or non well-known group account.\n");
 
@@ -172,7 +171,7 @@ namespace UserRightsUtil.Library
             }
             else if (!string.IsNullOrEmpty(strSid))
             {
-                accountName = Helpers.ConvertSidStringToAccountName(ref strSid, out peUse);
+                accountName = Helpers.ConvertStringSidToAccountName(ref strSid, out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -180,8 +179,8 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser &&
-                    peUse != SID_NAME_USE.SidTypeGroup)
+                else if (peUse != SID_NAME_USE.User &&
+                    peUse != SID_NAME_USE.Group)
                 {
                     Console.WriteLine("\n[-] Specified account is not user or non well-known group account.\n");
 
@@ -239,7 +238,7 @@ namespace UserRightsUtil.Library
                 else
                     return false;
 
-                result = Helpers.ConvertAccountNameToSidString(
+                result = Helpers.ConvertAccountNameToStringSid(
                     ref accountName,
                     out SID_NAME_USE peUse);
 
@@ -263,9 +262,7 @@ namespace UserRightsUtil.Library
             }
             else if (!string.IsNullOrEmpty(sid))
             {
-                result = Helpers.ConvertSidStringToAccountName(
-                    ref sid,
-                    out SID_NAME_USE peUse);
+                result = Helpers.ConvertStringSidToAccountName(ref sid, out SID_NAME_USE peUse);
 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -315,13 +312,11 @@ namespace UserRightsUtil.Library
             else if (!string.IsNullOrEmpty(username))
             {
                 if (!string.IsNullOrEmpty(domain))
-                    accountName = string.Format("{0}\\{1}", domain, username);
+                    accountName = string.Format(@"{0}\{1}", domain, username);
                 else
                     accountName = username;
 
-                strSid = Helpers.ConvertAccountNameToSidString(
-                    ref accountName,
-                    out peUse);
+                strSid = Helpers.ConvertAccountNameToStringSid(ref accountName, out peUse);
 
                 if (string.IsNullOrEmpty(strSid))
                 {
@@ -329,7 +324,7 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.User)
                 {
                     Console.WriteLine("\n[-] Specified account is not user account.\n");
 
@@ -338,7 +333,7 @@ namespace UserRightsUtil.Library
             }
             else if (!string.IsNullOrEmpty(strSid))
             {
-                accountName = Helpers.ConvertSidStringToAccountName(ref strSid, out peUse);
+                accountName = Helpers.ConvertStringSidToAccountName(ref strSid, out peUse);
 
                 if (string.IsNullOrEmpty(accountName))
                 {
@@ -346,7 +341,7 @@ namespace UserRightsUtil.Library
 
                     return false;
                 }
-                else if (peUse != SID_NAME_USE.SidTypeUser)
+                else if (peUse != SID_NAME_USE.User)
                 {
                     Console.WriteLine("\n[-] Specified account is not user account.\n");
 

@@ -1,378 +1,118 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace S4uDelegator.Interop
 {
-    internal class KERB_S4U_LOGON : IDisposable
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    internal struct DOMAIN_CONTROLLER_INFO
     {
-        [StructLayout(LayoutKind.Sequential)]
-        private struct INNER_LSA_UNICODE_STRING
-        {
-            public ushort Length;
-            public ushort MaximumLength;
-            public IntPtr Buffer;
-        }
+        public string DomainControllerName;
+        public string DomainControllerAddress;
+        public DC_ADDRESS_TYPE DomainControllerAddressType;
+        public Guid DomainGuid;
+        public string DomainName;
+        public string DnsForestName;
+        public DS_FLAGS Flags;
+        public string DcSiteName;
+        public string ClientSiteName;
+    }
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct INNER_KERB_S4U_LOGON
-        {
-            public int MessageType;
-            public uint Flags;
-            public INNER_LSA_UNICODE_STRING ClientUpn;
-            public INNER_LSA_UNICODE_STRING ClientRealm;
-        }
-
-        private INNER_KERB_S4U_LOGON kerbS4uLogon =
-            new INNER_KERB_S4U_LOGON();
-        private readonly IntPtr pointer;
-        private readonly int length;
-
-        public KERB_S4U_LOGON(uint flags, string upn, string realm)
-        {
-            byte[] upnBytes = new byte[] { };
-            byte[] realmBytes = new byte[] { };
-            int KerbS4ULogon = 12;
-
-            kerbS4uLogon.MessageType = KerbS4ULogon;
-            kerbS4uLogon.Flags = flags;
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                upnBytes = Encoding.Unicode.GetBytes(upn);
-                kerbS4uLogon.ClientUpn.Length =
-                    (ushort)upnBytes.Length;
-                kerbS4uLogon.ClientUpn.MaximumLength =
-                    (ushort)(upnBytes.Length + 2);
-            }
-            else
-            {
-                kerbS4uLogon.ClientUpn.Length = 0;
-                kerbS4uLogon.ClientUpn.MaximumLength = 0;
-            }
-
-            if (!string.IsNullOrEmpty(realm))
-            {
-                realmBytes = Encoding.Unicode.GetBytes(realm);
-                kerbS4uLogon.ClientRealm.Length =
-                    (ushort)realmBytes.Length;
-                kerbS4uLogon.ClientRealm.MaximumLength =
-                    (ushort)(realmBytes.Length + 2);
-            }
-            else
-            {
-                kerbS4uLogon.ClientRealm.Length = 0;
-                kerbS4uLogon.ClientRealm.MaximumLength = 0;
-            }
-
-            length = Marshal.SizeOf(kerbS4uLogon) +
-                kerbS4uLogon.ClientUpn.MaximumLength +
-                kerbS4uLogon.ClientRealm.MaximumLength;
-            pointer = Marshal.AllocHGlobal(length);
-            Marshal.Copy(new byte[length], 0, pointer, length);
-
-            IntPtr pUpnString = new IntPtr(
-                pointer.ToInt64() +
-                Marshal.SizeOf(kerbS4uLogon));
-            IntPtr pRealmString = new IntPtr(
-                pUpnString.ToInt64() +
-                kerbS4uLogon.ClientUpn.MaximumLength);
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                Marshal.Copy(upnBytes, 0, pUpnString, upnBytes.Length);
-                kerbS4uLogon.ClientUpn.Buffer = pUpnString;
-            }
-            else
-            {
-                kerbS4uLogon.ClientUpn.Buffer = IntPtr.Zero;
-            }
-
-            if (!string.IsNullOrEmpty(realm))
-            {
-                Marshal.Copy(realmBytes, 0, pRealmString, realmBytes.Length);
-                kerbS4uLogon.ClientRealm.Buffer = pRealmString;
-            }
-            else
-            {
-                kerbS4uLogon.ClientRealm.Buffer = IntPtr.Zero;
-            }
-
-            Marshal.StructureToPtr(kerbS4uLogon, pointer, true);
-        }
-
-        public KERB_S4U_LOGON(string upn, string realm)
-        {
-            byte[] upnBytes = new byte[] { };
-            byte[] realmBytes = new byte[] { };
-            int KerbS4ULogon = 12;
-
-            kerbS4uLogon.MessageType = KerbS4ULogon;
-            kerbS4uLogon.Flags = 0;
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                upnBytes = Encoding.Unicode.GetBytes(upn);
-                kerbS4uLogon.ClientUpn.Length =
-                    (ushort)upnBytes.Length;
-                kerbS4uLogon.ClientUpn.MaximumLength =
-                    (ushort)(upnBytes.Length + 2);
-            }
-            else
-            {
-                kerbS4uLogon.ClientUpn.Length = 0;
-                kerbS4uLogon.ClientUpn.MaximumLength = 0;
-            }
-
-            if (!string.IsNullOrEmpty(realm))
-            {
-                realmBytes = Encoding.Unicode.GetBytes(realm);
-                kerbS4uLogon.ClientRealm.Length =
-                    (ushort)realmBytes.Length;
-                kerbS4uLogon.ClientRealm.MaximumLength =
-                    (ushort)(realmBytes.Length + 2);
-            }
-            else
-            {
-                kerbS4uLogon.ClientRealm.Length = 0;
-                kerbS4uLogon.ClientRealm.MaximumLength = 0;
-            }
-
-            length = Marshal.SizeOf(kerbS4uLogon) +
-                kerbS4uLogon.ClientUpn.MaximumLength +
-                kerbS4uLogon.ClientRealm.MaximumLength;
-            pointer = Marshal.AllocHGlobal(length);
-            Marshal.Copy(new byte[length], 0, pointer, length);
-
-            IntPtr pUpnString = new IntPtr(
-                pointer.ToInt64() +
-                Marshal.SizeOf(kerbS4uLogon));
-            IntPtr pRealmString = new IntPtr(
-                pUpnString.ToInt64() +
-                kerbS4uLogon.ClientUpn.MaximumLength);
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                Marshal.Copy(upnBytes, 0, pUpnString, upnBytes.Length);
-                kerbS4uLogon.ClientUpn.Buffer = pUpnString;
-            }
-            else
-            {
-                kerbS4uLogon.ClientUpn.Buffer = IntPtr.Zero;
-            }
-
-            if (!string.IsNullOrEmpty(realm))
-            {
-                Marshal.Copy(realmBytes, 0, pRealmString, realmBytes.Length);
-                kerbS4uLogon.ClientRealm.Buffer = pRealmString;
-            }
-            else
-            {
-                kerbS4uLogon.ClientRealm.Buffer = IntPtr.Zero;
-            }
-
-            Marshal.StructureToPtr(kerbS4uLogon, pointer, true);
-        }
-
-        public void Dispose()
-        {
-            Marshal.FreeHGlobal(pointer);
-        }
-
-        public IntPtr Pointer()
-        {
-            return pointer;
-        }
-
-        public int Length()
-        {
-            return length;
-        }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct GROUP_INFO_0
+    {
+        public string grpi0_name;
     }
 
     internal class MSV1_0_S4U_LOGON : IDisposable
     {
-        [StructLayout(LayoutKind.Sequential)]
-        private struct INNER_LSA_UNICODE_STRING
-        {
-            public ushort Length;
-            public ushort MaximumLength;
-            public IntPtr Buffer;
-        }
+        public IntPtr Buffer { get; } = IntPtr.Zero;
+        public int Length { get; } = 0;
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct INNER_MSV1_0_S4U_LOGON
+        internal struct MSV1_0_S4U_LOGON_INNER
         {
-            public int MessageType;
+            public MSV1_0_LOGON_SUBMIT_TYPE MessageType;
             public uint Flags;
-            public INNER_LSA_UNICODE_STRING UserPrincipalName;
-            public INNER_LSA_UNICODE_STRING DomainName;
+            public UNICODE_STRING UserPrincipalName;
+            public UNICODE_STRING DomainName;
         }
 
-        private INNER_MSV1_0_S4U_LOGON msvS4uLogon =
-            new INNER_MSV1_0_S4U_LOGON();
-        private readonly IntPtr pointer;
-        private readonly int length;
-
-        public MSV1_0_S4U_LOGON(uint flags, string upn, string domain)
+        public MSV1_0_S4U_LOGON(MSV1_0_LOGON_SUBMIT_TYPE type, uint flags, string upn, string domain)
         {
-            byte[] upnBytes = new byte[] { };
-            byte[] domainBytes = new byte[] { };
-            int MsV1_0S4ULogon = 12;
-
-            msvS4uLogon.MessageType = MsV1_0S4ULogon;
-            msvS4uLogon.Flags = flags;
-
-            if (!string.IsNullOrEmpty(upn))
+            int innerStructSize = Marshal.SizeOf(typeof(MSV1_0_S4U_LOGON_INNER));
+            var pUpnBuffer = IntPtr.Zero;
+            var pDomainBuffer = IntPtr.Zero;
+            var innerStruct = new MSV1_0_S4U_LOGON_INNER
             {
-                upnBytes = Encoding.Unicode.GetBytes(upn);
-                msvS4uLogon.UserPrincipalName.Length =
-                    (ushort)upnBytes.Length;
-                msvS4uLogon.UserPrincipalName.MaximumLength =
-                    (ushort)(upnBytes.Length + 2);
+                MessageType = type,
+                Flags = flags
+            };
+            Length = innerStructSize;
+
+            if (string.IsNullOrEmpty(upn))
+            {
+                innerStruct.UserPrincipalName.Length = 0;
+                innerStruct.UserPrincipalName.MaximumLength = 0;
             }
             else
             {
-                msvS4uLogon.UserPrincipalName.Length = 0;
-                msvS4uLogon.UserPrincipalName.MaximumLength = 0;
+                innerStruct.UserPrincipalName.Length = (ushort)(upn.Length * 2);
+                innerStruct.UserPrincipalName.MaximumLength = (ushort)((upn.Length * 2) + 2);
+                Length += innerStruct.UserPrincipalName.MaximumLength;
+            }
+
+            if (string.IsNullOrEmpty(domain))
+            {
+                innerStruct.DomainName.Length = 0;
+                innerStruct.DomainName.MaximumLength = 0;
+            }
+            else
+            {
+                innerStruct.DomainName.Length = (ushort)(domain.Length * 2);
+                innerStruct.DomainName.MaximumLength = (ushort)((domain.Length * 2) + 2);
+                Length += innerStruct.DomainName.MaximumLength;
+            }
+
+            Buffer = Marshal.AllocHGlobal(Length);
+
+            for (var offset = 0; offset < Length; offset++)
+                Marshal.WriteByte(Buffer, offset, 0);
+
+            if (!string.IsNullOrEmpty(upn))
+            {
+                if (Environment.Is64BitProcess)
+                    pUpnBuffer = new IntPtr(Buffer.ToInt64() + innerStructSize);
+                else
+                    pUpnBuffer = new IntPtr(Buffer.ToInt32() + innerStructSize);
+
+                innerStruct.UserPrincipalName.SetBuffer(pUpnBuffer);
             }
 
             if (!string.IsNullOrEmpty(domain))
             {
-                domainBytes = Encoding.Unicode.GetBytes(domain);
-                msvS4uLogon.DomainName.Length =
-                    (ushort)domainBytes.Length;
-                msvS4uLogon.DomainName.MaximumLength =
-                    (ushort)(domainBytes.Length + 2);
-            }
-            else
-            {
-                msvS4uLogon.DomainName.Length = 0;
-                msvS4uLogon.DomainName.MaximumLength = 0;
+                if (Environment.Is64BitProcess)
+                    pDomainBuffer = new IntPtr(Buffer.ToInt64() + innerStructSize + innerStruct.UserPrincipalName.MaximumLength);
+                else
+                    pDomainBuffer = new IntPtr(Buffer.ToInt32() + innerStructSize + innerStruct.UserPrincipalName.MaximumLength);
+
+                innerStruct.DomainName.SetBuffer(pDomainBuffer);
             }
 
-            length = Marshal.SizeOf(msvS4uLogon) +
-                msvS4uLogon.UserPrincipalName.MaximumLength +
-                msvS4uLogon.DomainName.MaximumLength;
-            pointer = Marshal.AllocHGlobal(length);
-            Marshal.Copy(new byte[length], 0, pointer, length);
-
-            IntPtr pUpnString = new IntPtr(
-                pointer.ToInt64() +
-                Marshal.SizeOf(msvS4uLogon));
-            IntPtr pDomainString = new IntPtr(
-                pUpnString.ToInt64() +
-                msvS4uLogon.UserPrincipalName.MaximumLength);
+            Marshal.StructureToPtr(innerStruct, Buffer, true);
 
             if (!string.IsNullOrEmpty(upn))
-            {
-                Marshal.Copy(upnBytes, 0, pUpnString, upnBytes.Length);
-                msvS4uLogon.UserPrincipalName.Buffer = pUpnString;
-            }
-            else
-            {
-                msvS4uLogon.UserPrincipalName.Buffer = IntPtr.Zero;
-            }
+                Marshal.Copy(Encoding.Unicode.GetBytes(upn), 0, pUpnBuffer, upn.Length * 2);
 
             if (!string.IsNullOrEmpty(domain))
-            {
-                Marshal.Copy(domainBytes, 0, pDomainString, domainBytes.Length);
-                msvS4uLogon.DomainName.Buffer = pDomainString;
-            }
-            else
-            {
-                msvS4uLogon.DomainName.Buffer = IntPtr.Zero;
-            }
-
-            Marshal.StructureToPtr(msvS4uLogon, pointer, true);
-        }
-
-        public MSV1_0_S4U_LOGON(string upn, string domain)
-        {
-            byte[] upnBytes = new byte[] { };
-            byte[] domainBytes = new byte[] { };
-            int MsV1_0S4ULogon = 12;
-
-            msvS4uLogon.MessageType = MsV1_0S4ULogon;
-            msvS4uLogon.Flags = 0;
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                upnBytes = Encoding.Unicode.GetBytes(upn);
-                msvS4uLogon.UserPrincipalName.Length =
-                    (ushort)upnBytes.Length;
-                msvS4uLogon.UserPrincipalName.MaximumLength =
-                    (ushort)(upnBytes.Length + 2);
-            }
-            else
-            {
-                msvS4uLogon.UserPrincipalName.Length = 0;
-                msvS4uLogon.UserPrincipalName.MaximumLength = 0;
-            }
-
-            if (!string.IsNullOrEmpty(domain))
-            {
-                domainBytes = Encoding.Unicode.GetBytes(domain);
-                msvS4uLogon.DomainName.Length =
-                    (ushort)domainBytes.Length;
-                msvS4uLogon.DomainName.MaximumLength =
-                    (ushort)(domainBytes.Length + 2);
-            }
-            else
-            {
-                msvS4uLogon.DomainName.Length = 0;
-                msvS4uLogon.DomainName.MaximumLength = 0;
-            }
-
-            length = Marshal.SizeOf(msvS4uLogon) +
-                msvS4uLogon.UserPrincipalName.MaximumLength +
-                msvS4uLogon.DomainName.MaximumLength;
-            pointer = Marshal.AllocHGlobal(length);
-            Marshal.Copy(new byte[length], 0, pointer, length);
-
-            IntPtr pUpnString = new IntPtr(
-                pointer.ToInt64() +
-                Marshal.SizeOf(msvS4uLogon));
-            IntPtr pDomainString = new IntPtr(
-                pUpnString.ToInt64() +
-                msvS4uLogon.UserPrincipalName.MaximumLength);
-
-            if (!string.IsNullOrEmpty(upn))
-            {
-                Marshal.Copy(upnBytes, 0, pUpnString, upnBytes.Length);
-                msvS4uLogon.UserPrincipalName.Buffer = pUpnString;
-            }
-            else
-            {
-                msvS4uLogon.UserPrincipalName.Buffer = IntPtr.Zero;
-            }
-
-            if (!string.IsNullOrEmpty(domain))
-            {
-                Marshal.Copy(domainBytes, 0, pDomainString, domainBytes.Length);
-                msvS4uLogon.DomainName.Buffer = pDomainString;
-            }
-            else
-            {
-                msvS4uLogon.DomainName.Buffer = IntPtr.Zero;
-            }
-
-            Marshal.StructureToPtr(msvS4uLogon, pointer, true);
+                Marshal.Copy(Encoding.Unicode.GetBytes(domain), 0, pDomainBuffer, domain.Length * 2);
         }
 
         public void Dispose()
         {
-            Marshal.FreeHGlobal(pointer);
-        }
-
-        public IntPtr Pointer()
-        {
-            return pointer;
-        }
-
-        public int Length()
-        {
-            return length;
+            if (Buffer != IntPtr.Zero)
+                Marshal.FreeHGlobal(Buffer);
         }
     }
 
@@ -408,19 +148,21 @@ namespace S4uDelegator.Interop
     [StructLayout(LayoutKind.Sequential)]
     internal struct LUID
     {
-        public uint LowPart;
-        public uint HighPart;
+        public int LowPart;
+        public int HighPart;
 
-        public LUID(uint _lowPart, uint _highPart)
+        public long ToInt64()
         {
-            LowPart = _lowPart;
-            HighPart = _highPart;
+            return ((long)this.HighPart << 32) | (uint)this.LowPart;
         }
 
-        public LUID(ulong value)
+        public static LUID FromInt64(long value)
         {
-            LowPart = (uint)(value & 0xFFFFFFFFUL);
-            HighPart = (uint)(value >> 32);
+            return new LUID
+            {
+                LowPart = (int)(value),
+                HighPart = (int)((value >> 32))
+            };
         }
     }
 
@@ -485,27 +227,21 @@ namespace S4uDelegator.Interop
     internal struct TOKEN_GROUPS
     {
         public int GroupCount;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
         public SID_AND_ATTRIBUTES[] Groups;
-
-        public TOKEN_GROUPS(int privilegeCount)
-        {
-            GroupCount = privilegeCount;
-            Groups = new SID_AND_ATTRIBUTES[32];
-        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct TOKEN_PRIVILEGES
     {
         public int PrivilegeCount;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
         public LUID_AND_ATTRIBUTES[] Privileges;
 
         public TOKEN_PRIVILEGES(int privilegeCount)
         {
             PrivilegeCount = privilegeCount;
-            Privileges = new LUID_AND_ATTRIBUTES[36];
+            Privileges = new LUID_AND_ATTRIBUTES[1];
         }
     }
 
@@ -519,10 +255,63 @@ namespace S4uDelegator.Interop
 
         public TOKEN_SOURCE(string name)
         {
+            var random = new Random();
+            var soureNameBytes = Encoding.ASCII.GetBytes(name);
+            int nSourceNameLength = (soureNameBytes.Length > 8) ? 8 : soureNameBytes.Length;
             SourceName = new byte[8];
-            Encoding.GetEncoding(1252).GetBytes(name, 0, name.Length, SourceName, 0);
-            if (!NativeMethods.AllocateLocallyUniqueId(out SourceIdentifier))
-                throw new System.ComponentModel.Win32Exception();
+            SourceIdentifier = new LUID
+            {
+                LowPart = random.Next(Int32.MinValue, Int32.MaxValue),
+                HighPart = random.Next(Int32.MinValue, Int32.MaxValue)
+            };
+            Buffer.BlockCopy(soureNameBytes, 0, SourceName, 0, nSourceNameLength);
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct UNICODE_STRING : IDisposable
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        private IntPtr buffer;
+
+        public UNICODE_STRING(string s)
+        {
+            Length = (ushort)(s.Length * 2);
+            MaximumLength = (ushort)(Length + 2);
+            buffer = Marshal.StringToHGlobalUni(s);
+        }
+
+        public void Dispose()
+        {
+            Marshal.FreeHGlobal(buffer);
+            buffer = IntPtr.Zero;
+        }
+
+        public void SetBuffer(IntPtr _buffer)
+        {
+            buffer = _buffer;
+        }
+
+        public override string ToString()
+        {
+            if ((Length == 0) || (buffer == IntPtr.Zero))
+                return null;
+            else
+                return Marshal.PtrToStringUni(buffer, Length / 2);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct USER_INFO_1
+    {
+        public string usri1_name;
+        public string usri1_password;
+        public int usri1_password_age;
+        public USER_PRIVS usri1_priv;
+        public string usri1_home_dir;
+        public string usri1_comment;
+        public USER_FLAGS usri1_flags;
+        public string usri1_script_path;
     }
 }

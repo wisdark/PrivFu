@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33213.308
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenStealing", "TokenStealing\TokenStealing.csproj", "{4C574B86-DC07-47EA-BB02-FD50AE002910}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NamedPipeImpersonation", "NamedPipeImpersonation\NamedPipeImpersonation.csproj", "{04FC654C-D89A-44F9-9E34-6D95CE152E9D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NamedPipeClient", "NamedPipeClient\NamedPipeClient.csproj", "{0CC923FB-E1FD-456B-9FE4-9EBA5A3DC2FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WfpTokenDup", "WfpTokenDup\WfpTokenDup.csproj", "{6F99CB40-8FEF-4B63-A35D-9CEEC71F7B5F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrintSpoofer", "PrintSpoofer\PrintSpoofer.csproj", "{449CE476-7B27-47F5-B09C-570788A2F261}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EfsPotato", "EfsPotato\EfsPotato.csproj", "{2AD3951D-DEA6-4CF7-88BE-4C73344AC9DA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4C574B86-DC07-47EA-BB02-FD50AE002910}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C574B86-DC07-47EA-BB02-FD50AE002910}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C574B86-DC07-47EA-BB02-FD50AE002910}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C574B86-DC07-47EA-BB02-FD50AE002910}.Release|Any CPU.Build.0 = Release|Any CPU
+		{04FC654C-D89A-44F9-9E34-6D95CE152E9D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{04FC654C-D89A-44F9-9E34-6D95CE152E9D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{04FC654C-D89A-44F9-9E34-6D95CE152E9D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{04FC654C-D89A-44F9-9E34-6D95CE152E9D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CC923FB-E1FD-456B-9FE4-9EBA5A3DC2FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CC923FB-E1FD-456B-9FE4-9EBA5A3DC2FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CC923FB-E1FD-456B-9FE4-9EBA5A3DC2FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CC923FB-E1FD-456B-9FE4-9EBA5A3DC2FC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F99CB40-8FEF-4B63-A35D-9CEEC71F7B5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F99CB40-8FEF-4B63-A35D-9CEEC71F7B5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F99CB40-8FEF-4B63-A35D-9CEEC71F7B5F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F99CB40-8FEF-4B63-A35D-9CEEC71F7B5F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{449CE476-7B27-47F5-B09C-570788A2F261}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{449CE476-7B27-47F5-B09C-570788A2F261}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{449CE476-7B27-47F5-B09C-570788A2F261}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{449CE476-7B27-47F5-B09C-570788A2F261}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2AD3951D-DEA6-4CF7-88BE-4C73344AC9DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AD3951D-DEA6-4CF7-88BE-4C73344AC9DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2AD3951D-DEA6-4CF7-88BE-4C73344AC9DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2AD3951D-DEA6-4CF7-88BE-4C73344AC9DA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E4D40894-6B65-4993-ABB8-6BBBF37020E1}
+	EndGlobalSection
+EndGlobal

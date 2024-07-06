@@ -62,13 +62,21 @@ namespace TrustExec.Interop
     [StructLayout(LayoutKind.Sequential)]
     internal struct LUID
     {
-        public uint LowPart;
-        public uint HighPart;
+        public int LowPart;
+        public int HighPart;
 
-        public LUID(uint _lowPart, uint _highPart)
+        public long ToInt64()
         {
-            LowPart = _lowPart;
-            HighPart = _highPart;
+            return ((long)this.HighPart << 32) | (uint)this.LowPart;
+        }
+
+        public static LUID FromInt64(long value)
+        {
+            return new LUID
+            {
+                LowPart = (int)(value),
+                HighPart = (int)((value >> 32))
+            };
         }
     }
 
@@ -142,10 +150,10 @@ namespace TrustExec.Interop
     [StructLayout(LayoutKind.Sequential)]
     internal struct SECURITY_QUALITY_OF_SERVICE
     {
-        readonly int Length;
-        readonly SECURITY_IMPERSONATION_LEVEL ImpersonationLevel;
-        readonly byte ContextTrackingMode;
-        readonly byte EffectiveOnly;
+        public int Length;
+        public SECURITY_IMPERSONATION_LEVEL ImpersonationLevel;
+        public byte ContextTrackingMode;
+        public byte EffectiveOnly;
 
         public SECURITY_QUALITY_OF_SERVICE(
             SECURITY_IMPERSONATION_LEVEL _impersonationLevel,
@@ -159,16 +167,6 @@ namespace TrustExec.Interop
 
             Length = Marshal.SizeOf(this);
         }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct SID
-    {
-        public byte Revision;
-        public byte SubAuthorityCount;
-        public SID_IDENTIFIER_AUTHORITY IdentifierAuthority;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-        public uint[] SubAuthority;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -279,17 +277,24 @@ namespace TrustExec.Interop
     [StructLayout(LayoutKind.Sequential)]
     internal struct TOKEN_SOURCE
     {
-        public TOKEN_SOURCE(string name)
-        {
-            SourceName = new byte[8];
-            Encoding.GetEncoding(1252).GetBytes(name, 0, name.Length, SourceName, 0);
-            if (!NativeMethods.AllocateLocallyUniqueId(out SourceIdentifier))
-                throw new System.ComponentModel.Win32Exception();
-        }
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
         public byte[] SourceName;
         public LUID SourceIdentifier;
+
+        public TOKEN_SOURCE(string name)
+        {
+            var random = new Random();
+            var soureNameBytes = Encoding.ASCII.GetBytes(name);
+            int nSourceNameLength = (soureNameBytes.Length > 8) ? 8 : soureNameBytes.Length;
+            SourceName = new byte[8];
+            SourceIdentifier = new LUID
+            {
+                LowPart = random.Next(Int32.MinValue, Int32.MaxValue),
+                HighPart = random.Next(Int32.MinValue, Int32.MaxValue)
+            };
+            Buffer.BlockCopy(soureNameBytes, 0, SourceName, 0, nSourceNameLength);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -299,30 +304,36 @@ namespace TrustExec.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct UNICODE_STRING
+    internal struct UNICODE_STRING : IDisposable
     {
-        ushort Length;
-        ushort MaximumLength;
-        [MarshalAs(UnmanagedType.LPWStr)]
-        string Buffer;
+        public ushort Length;
+        public ushort MaximumLength;
+        private IntPtr buffer;
 
-        public UNICODE_STRING(string str)
+        public UNICODE_STRING(string s)
         {
-            Length = 0;
-            MaximumLength = 0;
-            Buffer = null;
-            SetString(str);
+            Length = (ushort)(s.Length * 2);
+            MaximumLength = (ushort)(Length + 2);
+            buffer = Marshal.StringToHGlobalUni(s);
         }
 
-        public void SetString(string str)
+        public void Dispose()
         {
-            if (str.Length > ushort.MaxValue / 2)
-            {
-                throw new ArgumentException("String too long for UnicodeString");
-            }
-            Length = (ushort)(str.Length * 2);
-            MaximumLength = (ushort)((str.Length * 2) + 1);
-            Buffer = str;
+            Marshal.FreeHGlobal(buffer);
+            buffer = IntPtr.Zero;
+        }
+
+        public void SetBuffer(IntPtr _buffer)
+        {
+            buffer = _buffer;
+        }
+
+        public override string ToString()
+        {
+            if ((Length == 0) || (buffer == IntPtr.Zero))
+                return null;
+            else
+                return Marshal.PtrToStringUni(buffer, Length / 2);
         }
     }
 }

@@ -7,30 +7,20 @@ using TrustExec.Interop;
 
 namespace TrustExec.Library
 {
+    using NTSTATUS = Int32;
+
     internal class Utilities
     {
-        public static bool AddVirtualAccount(
-            string domain,
-            string username,
-            int domainRid)
+        public static bool AddVirtualAccount(string domain, string username, int domainRid)
         {
             int error;
-            int ntstatus;
-            string domainSid = string.Format("S-1-5-{0}", domainRid);
-            string userSid = string.Format("S-1-5-{0}-110", domainRid);
+            NTSTATUS ntstatus;
+            var domainSid = string.Format("S-1-5-{0}", domainRid);
+            var userSid = string.Format("S-1-5-{0}-110", domainRid);
 
             if (string.IsNullOrEmpty(domain) || string.IsNullOrEmpty(username))
             {
                 Console.WriteLine("[!] Domain name and username are required.");
-                return false;
-            }
-
-            if ((domainRid >= 0 && domainRid < 21) || domainRid == 32 ||
-                domainRid == 64 || domainRid == 80 || domainRid == 83 ||
-                domainRid == 113 || domainRid == 114)
-            {
-                Console.WriteLine("[!] {0} is reserved.", domainSid);
-
                 return false;
             }
 
@@ -61,6 +51,7 @@ namespace TrustExec.Library
             }
 
             ntstatus = Helpers.AddSidMapping(domain, null, pSidDomain);
+            NativeMethods.LocalFree(pSidDomain);
 
             if (ntstatus == Win32Consts.STATUS_SUCCESS)
             {
@@ -83,17 +74,13 @@ namespace TrustExec.Library
         }
 
 
-        public static bool CreateTokenAssignedProcess(
-            IntPtr hToken,
-            string command)
+        public static bool CreateTokenAssignedProcess(IntPtr hToken, string command)
         {
-            int error;
-            var startupInfo = new STARTUPINFO();
-            startupInfo.cb = Marshal.SizeOf(startupInfo);
-            startupInfo.lpDesktop = @"Winsta0\Default";
-
-            Console.WriteLine("[>] Trying to create a token assigned process.\n");
-
+            var startupInfo = new STARTUPINFO
+            {
+                cb = Marshal.SizeOf(typeof(STARTUPINFO)),
+                lpDesktop = @"Winsta0\Default"
+            };
             bool status = NativeMethods.CreateProcessAsUser(
                 hToken,
                 null,
@@ -104,23 +91,17 @@ namespace TrustExec.Library
                 0,
                 IntPtr.Zero,
                 Environment.CurrentDirectory,
-                ref startupInfo,
+                in startupInfo,
                 out PROCESS_INFORMATION processInformation);
 
-            if (!status)
+            if (status)
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to create new process.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return false;
+                NativeMethods.WaitForSingleObject(processInformation.hProcess, uint.MaxValue);
+                NativeMethods.CloseHandle(processInformation.hThread);
+                NativeMethods.CloseHandle(processInformation.hProcess);
             }
 
-            NativeMethods.WaitForSingleObject(processInformation.hProcess, uint.MaxValue);
-            NativeMethods.CloseHandle(processInformation.hThread);
-            NativeMethods.CloseHandle(processInformation.hProcess);
-
-            return true;
+            return status;
         }
 
 
@@ -152,8 +133,8 @@ namespace TrustExec.Library
                 }
 
                 tokenPrivileges.Privileges[idx].Attributes = (uint)(
-                    SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED |
-                    SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED_BY_DEFAULT);
+                    SE_PRIVILEGE_ATTRIBUTES.ENABLED |
+                    SE_PRIVILEGE_ATTRIBUTES.ENABLED_BY_DEFAULT);
                 tokenPrivileges.Privileges[idx].Luid = luid;
             }
 
@@ -167,12 +148,9 @@ namespace TrustExec.Library
             string[] extraSidsArray,
             bool full)
         {
-            int error;
-            int ntstatus;
+            NTSTATUS ntstatus;
             LUID authId = Win32Consts.SYSTEM_LUID;
             var tokenSource = new TOKEN_SOURCE("*SYSTEM*");
-            tokenSource.SourceIdentifier.HighPart = 0;
-            tokenSource.SourceIdentifier.LowPart = 0;
             string[] privs;
 
             if (full)
@@ -228,16 +206,9 @@ namespace TrustExec.Library
             Console.WriteLine("[>] Trying to create an elevated {0} token.",
                 tokenType == TOKEN_TYPE.TokenPrimary ? "primary" : "impersonation");
 
-            if (!NativeMethods.ConvertStringSidToSid(
+            NativeMethods.ConvertStringSidToSid(
                 Win32Consts.TRUSTED_INSTALLER_RID,
-                out IntPtr pTrustedInstaller))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get SID for TrustedInstaller.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-
-                return IntPtr.Zero;
-            }
+                out IntPtr pTrustedInstaller);
 
             if (!CreateTokenPrivileges(
                 privs,
@@ -512,170 +483,110 @@ namespace TrustExec.Library
         }
 
 
-        public static void EnableAllPrivileges(IntPtr hToken)
-        {
-            Dictionary<LUID, uint> privs = GetAvailablePrivileges(hToken);
-            bool isEnabled;
-
-            foreach (var priv in privs)
-            {
-                isEnabled = ((priv.Value & (uint)SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED) != 0);
-
-                if (!isEnabled)
-                {
-                    EnableSinglePrivilege(hToken, priv.Key);
-                }
-            }
-        }
-
-
-        public static bool EnableSinglePrivilege(IntPtr hToken, LUID priv)
-        {
-            int error;
-            var tp = new TOKEN_PRIVILEGES(1);
-            tp.Privileges[0].Luid = priv;
-            tp.Privileges[0].Attributes = (uint)SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED;
-
-            IntPtr pTokenPrivilege = Marshal.AllocHGlobal(Marshal.SizeOf(tp));
-            Marshal.StructureToPtr(tp, pTokenPrivilege, true);
-
-            if (!NativeMethods.AdjustTokenPrivileges(
-                hToken,
-                false,
-                pTokenPrivilege,
-                0,
-                IntPtr.Zero,
-                IntPtr.Zero))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to enable {0}.", Helpers.GetPrivilegeName(priv));
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-
-                return false;
-            }
-
-            error = Marshal.GetLastWin32Error();
-
-            if (error != 0)
-            {
-                Console.WriteLine("[-] Failed to enable {0}.", Helpers.GetPrivilegeName(priv));
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return false;
-            }
-
-            // Console.WriteLine("[+] {0} is enabled successfully.", Helpers.GetPrivilegeName(priv));
-
-            return true;
-        }
-
-
-        public static bool EnableMultiplePrivileges(
+        public static bool EnableAllTokenPrivileges(
             IntPtr hToken,
-            string[] privs)
+            out Dictionary<string, bool> adjustedPrivs)
         {
-            StringComparison opt = StringComparison.OrdinalIgnoreCase;
-            Dictionary<string, bool> results = new Dictionary<string, bool>();
-            var privList = new List<string>(privs);
-            var availablePrivs = GetAvailablePrivileges(hToken);
-            bool isEnabled;
-            bool enabledAll = true;
-
-            foreach (var name in privList)
-            {
-                results.Add(name, false);
-            }
-
-            foreach (var priv in availablePrivs)
-            {
-                foreach (var name in privList)
-                {
-                    if (string.Compare(Helpers.GetPrivilegeName(priv.Key), name, opt) == 0)
-                    {
-                        isEnabled = ((priv.Value & (uint)SE_PRIVILEGE_ATTRIBUTES.SE_PRIVILEGE_ENABLED) != 0);
-
-                        if (isEnabled)
-                        {
-                            results[name] = true;
-                        }
-                        else
-                        {
-                            results[name] = EnableSinglePrivilege(hToken, priv.Key);
-                        }
-                    }
-                }
-            }
-
-            foreach (var result in results)
-            {
-                if (!result.Value)
-                {
-                    Console.WriteLine(
-                        "[-] {0} is not available.",
-                        result.Key);
-
-                    enabledAll = false;
-                }
-            }
-
-            return enabledAll;
-        }
-
-
-        public static Dictionary<LUID, uint> GetAvailablePrivileges(
-            IntPtr hToken)
-        {
-            int error;
-            bool status;
-            int bufferLength = Marshal.SizeOf(typeof(TOKEN_PRIVILEGES));
-            var availablePrivs = new Dictionary<LUID, uint>();
-            IntPtr pTokenPrivileges;
+            bool allEnabled;
 
             do
             {
-                pTokenPrivileges = Marshal.AllocHGlobal(bufferLength);
-                Helpers.ZeroMemory(pTokenPrivileges, bufferLength);
-
-                status = NativeMethods.GetTokenInformation(
+                var privsToEnable = new List<string>();
+                allEnabled = Helpers.GetTokenPrivileges(
                     hToken,
-                    TOKEN_INFORMATION_CLASS.TokenPrivileges,
-                    pTokenPrivileges,
-                    bufferLength,
-                    out bufferLength);
-                error = Marshal.GetLastWin32Error();
+                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
 
-                if (!status)
-                    Marshal.FreeHGlobal(pTokenPrivileges);
-            } while (!status && (error == Win32Consts.ERROR_INSUFFICIENT_BUFFER));
+                if (!allEnabled)
+                {
+                    adjustedPrivs = new Dictionary<string, bool>();
+                    break;
+                }
 
-            if (!status)
-                return availablePrivs;
+                foreach (var privName in availablePrivs.Keys)
+                    privsToEnable.Add(privName);
 
-            int privCount = Marshal.ReadInt32(pTokenPrivileges);
-            IntPtr buffer = new IntPtr(pTokenPrivileges.ToInt64() + Marshal.SizeOf(privCount));
+                allEnabled = EnableTokenPrivileges(hToken, privsToEnable, out adjustedPrivs);
+            } while (false);
 
-            for (var count = 0; count < privCount; count++)
-            {
-                var luidAndAttr = (LUID_AND_ATTRIBUTES)Marshal.PtrToStructure(
-                    buffer,
-                    typeof(LUID_AND_ATTRIBUTES));
-
-                availablePrivs.Add(luidAndAttr.Luid, luidAndAttr.Attributes);
-                buffer = new IntPtr(buffer.ToInt64() + Marshal.SizeOf(luidAndAttr));
-            }
-
-            Marshal.FreeHGlobal(pTokenPrivileges);
-
-            return availablePrivs;
+            return allEnabled;
         }
 
 
-        public static bool ImpersonateAsSmss(string[] privs)
+        public static bool EnableTokenPrivileges(
+            IntPtr hToken,
+            List<string> requiredPrivs,
+            out Dictionary<string, bool> adjustedPrivs)
         {
-            int error;
-            int smss;
+            var allEnabled = true;
+            adjustedPrivs = new Dictionary<string, bool>();
 
-            Console.WriteLine("[>] Trying to impersonate as smss.exe.");
+            do
+            {
+                if (requiredPrivs.Count == 0)
+                    break;
+
+                allEnabled = Helpers.GetTokenPrivileges(
+                    hToken,
+                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
+
+                if (!allEnabled)
+                    break;
+
+                foreach (var priv in requiredPrivs)
+                {
+                    adjustedPrivs.Add(priv, false);
+
+                    foreach (var available in availablePrivs)
+                    {
+                        if (Helpers.CompareIgnoreCase(available.Key, priv))
+                        {
+                            if ((available.Value & SE_PRIVILEGE_ATTRIBUTES.ENABLED) != 0)
+                            {
+                                adjustedPrivs[priv] = true;
+                            }
+                            else
+                            {
+                                IntPtr pTokenPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
+                                var tokenPrivileges = new TOKEN_PRIVILEGES(1);
+
+                                if (NativeMethods.LookupPrivilegeValue(
+                                    null,
+                                    priv,
+                                    out tokenPrivileges.Privileges[0].Luid))
+                                {
+                                    tokenPrivileges.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.ENABLED;
+                                    Marshal.StructureToPtr(tokenPrivileges, pTokenPrivileges, true);
+
+                                    adjustedPrivs[priv] = NativeMethods.AdjustTokenPrivileges(
+                                        hToken,
+                                        false,
+                                        pTokenPrivileges,
+                                        Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
+                                        IntPtr.Zero,
+                                        out int _);
+                                    adjustedPrivs[priv] = (adjustedPrivs[priv] && (Marshal.GetLastWin32Error() == 0));
+                                }
+
+                                Marshal.FreeHGlobal(pTokenPrivileges);
+                            }
+
+                            break;
+                        }
+                    }
+
+                    if (!adjustedPrivs[priv])
+                        allEnabled = false;
+                }
+            } while (false);
+
+            return allEnabled;
+        }
+
+
+        public static bool ImpersonateAsSmss(List<string> privs)
+        {
+            int smss;
+            var status = false;
 
             try
             {
@@ -683,117 +594,80 @@ namespace TrustExec.Library
             }
             catch
             {
-                Console.WriteLine("[-] Failed to get process id of smss.exe.\n");
-
-                return false;
+                return status;
             }
 
-            IntPtr hProcess = NativeMethods.OpenProcess(
-                ProcessAccessFlags.PROCESS_QUERY_LIMITED_INFORMATION,
-                true,
-                smss);
-
-            if (hProcess == IntPtr.Zero)
+            do
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get handle to smss.exe process.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return false;
-            }
+                IntPtr hProcess = NativeMethods.OpenProcess(
+                    ACCESS_MASK.PROCESS_QUERY_LIMITED_INFORMATION,
+                    true,
+                    smss);
 
-            if (!NativeMethods.OpenProcessToken(
-                hProcess,
-                TokenAccessFlags.TOKEN_DUPLICATE,
-                out IntPtr hToken))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get handle to smss.exe process token.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
+                if (hProcess == IntPtr.Zero)
+                    break;
+
+                status = NativeMethods.OpenProcessToken(
+                    hProcess,
+                    TokenAccessFlags.TOKEN_DUPLICATE,
+                    out IntPtr hToken);
                 NativeMethods.CloseHandle(hProcess);
 
-                return false;
-            }
+                if (!status)
+                    break;
 
-            NativeMethods.CloseHandle(hProcess);
-
-            if (!NativeMethods.DuplicateTokenEx(
-                hToken,
-                TokenAccessFlags.MAXIMUM_ALLOWED,
-                IntPtr.Zero,
-                SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation,
-                TOKEN_TYPE.TokenPrimary,
-                out IntPtr hDupToken))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to duplicate smss.exe process token.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
+                status = NativeMethods.DuplicateTokenEx(
+                    hToken,
+                    TokenAccessFlags.MAXIMUM_ALLOWED,
+                    IntPtr.Zero,
+                    SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation,
+                    TOKEN_TYPE.TokenPrimary,
+                    out IntPtr hDupToken);
                 NativeMethods.CloseHandle(hToken);
-                
-                return false;
-            }
 
-            if (!EnableMultiplePrivileges(hDupToken, privs))
-            {
+                if (!status)
+                    break;
+
+                EnableTokenPrivileges(hDupToken, privs, out Dictionary<string, bool> _);
+
+                status = ImpersonateThreadToken(hDupToken);
                 NativeMethods.CloseHandle(hDupToken);
-                NativeMethods.CloseHandle(hToken);
+            } while (false);
 
-                return false;
-            }
-
-            if (!ImpersonateThreadToken(hDupToken))
-            {
-                NativeMethods.CloseHandle(hDupToken);
-                NativeMethods.CloseHandle(hToken);
-
-                return false;
-            }
-
-            NativeMethods.CloseHandle(hDupToken);
-            NativeMethods.CloseHandle(hToken);
-
-            return true;
+            return status;
         }
 
 
         public static bool ImpersonateThreadToken(IntPtr hImpersonationToken)
         {
-            int error;
+            IntPtr pImpersonationLevel = Marshal.AllocHGlobal(4);
+            var status = false;
 
-            Console.WriteLine("[>] Trying to impersonate thread token.");
-            Console.WriteLine("    |-> Current Thread ID : {0}", NativeMethods.GetCurrentThreadId());
-
-            if (!NativeMethods.ImpersonateLoggedOnUser(hImpersonationToken))
+            if (NativeMethods.ImpersonateLoggedOnUser(hImpersonationToken))
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to impersonation.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
+                NTSTATUS ntstatus = NativeMethods.NtQueryInformationToken(
+                    WindowsIdentity.GetCurrent().Token,
+                    TOKEN_INFORMATION_CLASS.TokenImpersonationLevel,
+                    pImpersonationLevel,
+                    4u,
+                    out uint _);
 
-                return false;
+                if (ntstatus == Win32Consts.STATUS_SUCCESS)
+                {
+                    var level = (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(pImpersonationLevel);
+
+                    if (level == SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation)
+                        status = true;
+                    else if (level == SECURITY_IMPERSONATION_LEVEL.SecurityDelegation)
+                        status = true;
+                    else
+                        status = false;
+                }
             }
 
-            IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            IntPtr pImpersonationLevel = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenImpersonationLevel);
-            var impersonationLevel = (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(
-                pImpersonationLevel);
-            NativeMethods.LocalFree(pImpersonationLevel);
+            Marshal.FreeHGlobal(pImpersonationLevel);
 
-            if (impersonationLevel ==
-                SECURITY_IMPERSONATION_LEVEL.SecurityIdentification)
-            {
-                Console.WriteLine("[-] Failed to impersonation.");
-                Console.WriteLine("    |-> May not have {0}.\n", Win32Consts.SE_IMPERSONATE_NAME);
-
-                return false;
-            }
-            else
-            {
-                Console.WriteLine("[+] Impersonation is successful.");
-
-                return true;
-            }
+            return status;
         }
 
 
@@ -813,20 +687,15 @@ namespace TrustExec.Library
             if (!string.IsNullOrEmpty(username))
                 Console.WriteLine("    |-> Username : {0}", username.ToLower());
 
-            string accountName;
+            bool status = Helpers.ConvertAccountNameToSidString(
+                ref username,
+                ref domain,
+                out string sid,
+                out SID_NAME_USE _);
 
-            if (string.IsNullOrEmpty(username))
-                accountName = domain;
-            else
-                accountName = string.Format(@"{0}\{1}", domain.ToLower(), username.ToLower());
-
-            string sid = Helpers.ConvertAccountNameToSidString(
-                ref accountName,
-                out SID_NAME_USE peUse);
-
-            if (string.IsNullOrEmpty(sid))
+            if (string.IsNullOrEmpty(sid) || !status)
             {
-                Console.WriteLine("[-] Failed to lookup {0}.", accountName);
+                Console.WriteLine("[-] Failed to lookup.");
                 return false;
             }
             else

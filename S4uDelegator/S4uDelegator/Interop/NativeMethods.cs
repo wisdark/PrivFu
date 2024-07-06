@@ -18,10 +18,7 @@ namespace S4uDelegator.Interop
             IntPtr /*ref TOKEN_PRIVILEGES*/ NewState,
             int BufferLength,
             IntPtr /*out TOKEN_PRIVILEGES*/ PreviousState,
-            IntPtr /*out int*/ ReturnLength);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool AllocateLocallyUniqueId(out LUID Luid);
+            out int ReturnLength);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool ConvertSidToStringSid(IntPtr pSid, out string strSid);
@@ -40,7 +37,7 @@ namespace S4uDelegator.Interop
             ProcessCreationFlags dwCreationFlags,
             IntPtr lpEnvironment,
             string lpCurrentDirectory,
-            ref STARTUPINFO lpStartupInfo,
+            in STARTUPINFO lpStartupInfo,
             out PROCESS_INFORMATION lpProcessInformation);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -53,18 +50,7 @@ namespace S4uDelegator.Interop
             out IntPtr phNewToken);
 
         [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool GetTokenInformation(
-            IntPtr TokenHandle,
-            TOKEN_INFORMATION_CLASS TokenInformationClass,
-            IntPtr TokenInformation,
-            int TokenInformationLength,
-            out int ReturnLength);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool IsValidSid(IntPtr pSid);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool LookupAccountName(
@@ -89,7 +75,7 @@ namespace S4uDelegator.Interop
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool LookupPrivilegeName(
             string lpSystemName,
-            ref LUID lpLuid,
+            in LUID lpLuid,
             StringBuilder lpName,
             ref int cchName);
 
@@ -111,12 +97,12 @@ namespace S4uDelegator.Interop
             TokenAccessFlags DesiredAccess,
             out IntPtr TokenHandle);
 
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool RevertToSelf();
+
         /*
          * kernel32.dll
          */
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hModule);
-
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int FormatMessage(
             FormatMessageFlags dwFlags,
@@ -134,9 +120,6 @@ namespace S4uDelegator.Interop
             ref int nSize);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern int GetCurrentThreadId();
-
-        [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr LocalFree(IntPtr hMem);
 
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -145,10 +128,63 @@ namespace S4uDelegator.Interop
             bool bInheritHandle,
             int processId);
 
+        [DllImport("kernel32.dll")]
+        public static extern void SetLastError(int dwErrCode);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern uint WaitForSingleObject(
             IntPtr hHandle,
             uint dwMilliseconds);
+
+        /*
+         * netapi32.dll
+         */
+        [DllImport("netapi32.dll", CharSet = CharSet.Auto)]
+        public static extern int DsGetDcName(
+            string ComputerName,
+            string DomainName,
+            IntPtr /* in Guid */ DomainGuid,
+            string SiteName,
+            DS_NAME_FLAGS Flags,
+            out IntPtr /* DOMAIN_CONTROLLER_INFO */ DomainControllerInfo);
+        
+        [DllImport("netapi32.dll")]
+        public static extern int NetApiBufferFree(IntPtr Buffer);
+
+        [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+        public static extern int NetGroupEnum(
+            string servername,
+            int level,
+            out IntPtr bufptr,
+            int prefmaxlen,
+            out int entriesread,
+            out int totalentries,
+            IntPtr /* ref IntPtr */ resume_handle);
+
+        [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+        public static extern int NetUserEnum(
+            string servername,
+            int level,
+            USER_INFO_FILTER filter,
+            out IntPtr bufptr,
+            int prefmaxlen,
+            out int entriesread,
+            out int totalentries,
+            IntPtr /* ref IntPtr */ resume_handle);
+
+        /*
+         * ntdll.dll
+         */
+        [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtClose(IntPtr hObject);
+
+        [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtQueryInformationToken(
+            IntPtr TokenHandle,
+            TOKEN_INFORMATION_CLASS TokenInformationClass,
+            IntPtr TokenInformation,
+            uint TokenInformationLength,
+            out uint ReturnLength);
 
         /*
          * secur32.dll
@@ -159,27 +195,35 @@ namespace S4uDelegator.Interop
         [DllImport("secur32.dll", SetLastError = false)]
         public static extern NTSTATUS LsaFreeReturnBuffer(IntPtr buffer);
 
-        [DllImport("Secur32.dll", SetLastError = true)]
+        [DllImport("secur32.dll")]
         public static extern NTSTATUS LsaLogonUser(
             IntPtr LsaHandle,
-            ref LSA_STRING OriginName,
+            in LSA_STRING OriginName,
             SECURITY_LOGON_TYPE LogonType,
             uint AuthenticationPackage,
             IntPtr AuthenticationInformation,
-            int AuthenticationInformationLength,
-            IntPtr /*ref TOKEN_GROUPS*/ pLocalGroups,
-            ref TOKEN_SOURCE SourceContext,
+            uint AuthenticationInformationLength,
+            IntPtr /* in TOKEN_GROUPS */ LocalGroups,
+            in TOKEN_SOURCE SourceContext,
             out IntPtr ProfileBuffer,
-            out int ProfileBufferLength,
+            out uint ProfileBufferLength,
             out LUID LogonId,
-            IntPtr /*out IntPtr Token*/ pToken,
+            IntPtr Token, // [out] PHANDLE
             out QUOTA_LIMITS Quotas,
-            out int SubStatus);
+            out NTSTATUS SubStatus);
 
         [DllImport("Secur32.dll", SetLastError = true)]
         public static extern NTSTATUS LsaLookupAuthenticationPackage(
             IntPtr LsaHandle,
-            ref LSA_STRING PackageName,
+            in LSA_STRING PackageName,
             out uint AuthenticationPackage);
+
+        [DllImport("secur32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern bool TranslateName(
+            string lpAccountName,
+            EXTENDED_NAME_FORMAT AccountNameFormat,
+            EXTENDED_NAME_FORMAT DesiredNameFormat,
+            StringBuilder lpTranslatedName,
+            ref uint nSize);
     }
 }

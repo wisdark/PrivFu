@@ -3,119 +3,102 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using UserRightsUtil.Interop;
 
 namespace UserRightsUtil.Library
 {
     internal class Helpers
     {
-        public static string ConvertAccountNameToSidString(
-            ref string accountName,
-            out SID_NAME_USE peUse)
+        public static bool CompareIgnoreCase(string strA, string strB)
         {
-            int error;
+            return (string.Compare(strA, strB, StringComparison.OrdinalIgnoreCase) == 0);
+        }
+
+
+        public static string ConvertAccountNameToStringSid(
+            ref string accountName,
+            out SID_NAME_USE sidType)
+        {
             bool status;
-            string username;
-            string domain;
-            Regex rx1 = new Regex(
-                @"^[^\\]+\\[^\\]+$",
-                RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            Regex rx2 = new Regex(
-                @"^[^\\]+$",
-                RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            int error;
             IntPtr pSid;
-            int cbSid = 8;
-            StringBuilder referencedDomainName = new StringBuilder();
-            int cchReferencedDomainName = 8;
-            peUse = 0;
+            string stringSid = null;
+            int nSidLength = 256;
+            int nDomainLength = 256;
+            var domainBuilder = new StringBuilder(nDomainLength);
+            sidType = SID_NAME_USE.Unknown;
 
-            if (rx1.IsMatch(accountName))
-            {
-                try
-                {
-                    domain = accountName.Split('\\')[0];
-                    username = accountName.Split('\\')[1];
-
-                    if (domain == ".")
-                    {
-                        accountName = string.Format(
-                            "{0}\\{1}",
-                            Environment.MachineName,
-                            username);
-                    }
-                }
-                catch
-                {
-                    return null;
-                }
-            }
-            else if (!rx2.IsMatch(accountName))
-            {
+            if (string.IsNullOrEmpty(accountName))
                 return null;
-            }
 
             do
             {
-                referencedDomainName.Capacity = cchReferencedDomainName;
-                pSid = Marshal.AllocHGlobal(cbSid);
-                ZeroMemory(pSid, cbSid);
-
+                pSid = Marshal.AllocHGlobal(nSidLength);
                 status = NativeMethods.LookupAccountName(
                     null,
                     accountName,
                     pSid,
-                    ref cbSid,
-                    referencedDomainName,
-                    ref cchReferencedDomainName,
-                    out peUse);
+                    ref nSidLength,
+                    domainBuilder,
+                    ref nDomainLength,
+                    out sidType);
                 error = Marshal.GetLastWin32Error();
 
                 if (!status)
                 {
-                    referencedDomainName.Clear();
                     Marshal.FreeHGlobal(pSid);
+                    domainBuilder.Capacity = nDomainLength;
                 }
-            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
+            } while (!status && (error == Win32Consts.ERROR_INSUFFICIENT_BUFFER));
 
-            if (!status)
-                return null;
-
-            if (!NativeMethods.IsValidSid(pSid))
-                return null;
-
-            accountName = ConvertSidToAccountName(pSid, out peUse);
-
-            if (NativeMethods.ConvertSidToStringSid(pSid, out string strSid))
+            if (status)
             {
-                NativeMethods.LocalFree(pSid);
+                ConvertSidToAccountName(
+                    pSid,
+                    out string name,
+                    out string domain,
+                    out sidType);
+                NativeMethods.ConvertSidToStringSid(pSid, out stringSid);
 
-                return strSid;
-            }
-            else
-            {
-                NativeMethods.LocalFree(pSid);
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(domain))
+                    accountName = string.Format(@"{0}\{1}", domain, name);
+                else if (!string.IsNullOrEmpty(name))
+                    accountName = name;
+                else if (!string.IsNullOrEmpty(domain))
+                    accountName = domain;
 
-                return null;
+                Marshal.FreeHGlobal(pSid);
+                domainBuilder.Clear();
             }
+
+            return stringSid;
         }
 
 
-        public static string ConvertSidStringToAccountName(
-            ref string sid,
-            out SID_NAME_USE peUse)
+        public static string ConvertStringSidToAccountName(
+            ref string stringSid,
+            out SID_NAME_USE sidType)
         {
-            string accountName;
-            sid = sid.ToUpper();
+            string accountName = null;
+            stringSid = stringSid.ToUpper();
+            sidType = SID_NAME_USE.Unknown;
 
-            if (!NativeMethods.ConvertStringSidToSid(sid, out IntPtr pSid))
+            if (NativeMethods.ConvertStringSidToSid(stringSid, out IntPtr pSid))
             {
-                peUse = 0;
-                return null;
-            }
+                ConvertSidToAccountName(
+                    pSid,
+                    out string name,
+                    out string domain,
+                    out sidType);
+                NativeMethods.LocalFree(pSid);
 
-            accountName = ConvertSidToAccountName(pSid, out peUse);
-            NativeMethods.LocalFree(pSid);
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(domain))
+                    accountName = string.Format(@"{0}\{1}", domain, name);
+                else if (!string.IsNullOrEmpty(name))
+                    accountName = name;
+                else if (!string.IsNullOrEmpty(domain))
+                    accountName = domain;
+            }
 
             return accountName;
         }
@@ -123,92 +106,82 @@ namespace UserRightsUtil.Library
 
         public static string ConvertSidToAccountName(
             IntPtr pSid,
-            out SID_NAME_USE peUse)
+            out SID_NAME_USE sidType)
         {
-            bool status;
-            int error;
-            StringBuilder pName = new StringBuilder();
-            int cchName = 4;
-            StringBuilder pReferencedDomainName = new StringBuilder();
-            int cchReferencedDomainName = 4;
+            string accountName = null;
 
-            do
+            if (ConvertSidToAccountName(
+                pSid,
+                out string name,
+                out string domain,
+                out sidType))
             {
-                pName.Capacity = cchName;
-                pReferencedDomainName.Capacity = cchReferencedDomainName;
-
-                status = NativeMethods.LookupAccountSid(
-                    null,
-                    pSid,
-                    pName,
-                    ref cchName,
-                    pReferencedDomainName,
-                    ref cchReferencedDomainName,
-                    out peUse);
-                error = Marshal.GetLastWin32Error();
-
-                if (!status)
-                {
-                    pName.Clear();
-                    pReferencedDomainName.Clear();
-                }
-            } while (!status && error == Win32Consts.ERROR_INSUFFICIENT_BUFFER);
-
-            if (!status)
-                return null;
-
-            if (peUse == SID_NAME_USE.SidTypeDomain)
-            {
-                return pReferencedDomainName.ToString();
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(domain))
+                    accountName = string.Format(@"{0}\{1}", domain, name);
+                else if (!string.IsNullOrEmpty(name))
+                    accountName = name;
+                else if (!string.IsNullOrEmpty(domain))
+                    accountName = domain;
             }
-            else if (cchName == 0)
+
+            return accountName;
+        }
+
+
+        public static bool ConvertSidToAccountName(
+            IntPtr pSid,
+            out string name,
+            out string domain,
+            out SID_NAME_USE sidType)
+        {
+            int nNameLength = 255;
+            int nDomainLength = 255;
+            var nameBuilder = new StringBuilder(nNameLength);
+            var domainBuilder = new StringBuilder(nDomainLength);
+            bool status = NativeMethods.LookupAccountSid(
+                null,
+                pSid,
+                nameBuilder,
+                ref nNameLength,
+                domainBuilder,
+                ref nDomainLength,
+                out sidType);
+
+            if (status)
             {
-                return pReferencedDomainName.ToString();
-            }
-            else if (cchReferencedDomainName == 0)
-            {
-                return pName.ToString();
+                name = (nNameLength == 0) ? null : nameBuilder.ToString();
+                domain = (nDomainLength == 0) ? null : domainBuilder.ToString();
             }
             else
             {
-                return string.Format("{0}\\{1}",
-                    pReferencedDomainName.ToString(),
-                    pName.ToString());
+                name = null;
+                domain = null;
+                sidType = SID_NAME_USE.Unknown;
             }
+
+            return status;
         }
 
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
             int nReturnedLength;
-            ProcessModuleCollection modules;
-            FormatMessageFlags dwFlags;
             int nSizeMesssage = 256;
             var message = new StringBuilder(nSizeMesssage);
-            IntPtr pNtdll = IntPtr.Zero;
+            var dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            var pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                modules = Process.GetCurrentProcess().Modules;
-
-                foreach (ProcessModule mod in modules)
+                foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
                 {
-                    if (string.Compare(
-                        Path.GetFileName(mod.FileName),
-                        "ntdll.dll",
-                        StringComparison.OrdinalIgnoreCase) == 0)
+                    if (CompareIgnoreCase(Path.GetFileName(module.FileName), "ntdll.dll"))
                     {
-                        pNtdll = mod.BaseAddress;
+                        pNtdll = module.BaseAddress;
+                        dwFlags |= FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE;
                         break;
                     }
                 }
-
-                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
-                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
-            }
-            else
-            {
-                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
             nReturnedLength = NativeMethods.FormatMessage(
@@ -221,23 +194,9 @@ namespace UserRightsUtil.Library
                 IntPtr.Zero);
 
             if (nReturnedLength == 0)
-            {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
-            }
             else
-            {
-                return string.Format(
-                    "[ERROR] Code 0x{0} : {1}",
-                    code.ToString("X8"),
-                    message.ToString().Trim());
-            }
-        }
-
-
-        public static void ZeroMemory(IntPtr buffer, int size)
-        {
-            var nullBytes = new byte[size];
-            Marshal.Copy(nullBytes, 0, buffer, size);
+                return string.Format("[ERROR] Code 0x{0} : {1}", code.ToString("X8"), message.ToString().Trim());
         }
     }
 }

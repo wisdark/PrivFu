@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using S4uDelegator.Library;
 
@@ -6,81 +7,56 @@ namespace S4uDelegator.Handler
 {
     internal class Execute
     {
-        public static void LookupCommand(CommandLineParser options)
+        public static void Run(CommandLineParser options)
         {
             if (options.GetFlag("help"))
             {
                 options.GetHelp();
-
                 return;
             }
 
-            if (!string.IsNullOrEmpty(options.GetValue("domain")) ||
-                !string.IsNullOrEmpty(options.GetValue("username")) ||
-                !string.IsNullOrEmpty(options.GetValue("sid")))
+            string domain = options.GetValue("domain");
+            string name = options.GetValue("name");
+            string stringSid = options.GetValue("sid");
+
+            Console.WriteLine();
+
+            if (options.GetFlag("lookup") && options.GetFlag("execute"))
             {
-                Modules.LookupSid(
-                    options.GetValue("domain"),
-                    options.GetValue("username"),
-                    options.GetValue("sid"));
+                Console.WriteLine("[-] -l and -x cannot be specifed at a time.");
             }
-            else
+            else if (options.GetFlag("lookup"))
             {
-                options.GetHelp();
-
-                Console.WriteLine("[-] Missing account information.\n");
+                Modules.LookupSid(domain, name, stringSid);
             }
-        }
-
-
-        public static void ShellCommand(CommandLineParser options)
-        {
-            if (options.GetFlag("help"))
+            else if (options.GetFlag("execute"))
             {
-                options.GetHelp();
-
-                return;
-            }
-
-            if (!string.IsNullOrEmpty(options.GetValue("username")) ||
-                !string.IsNullOrEmpty(options.GetValue("sid")))
-            {
-                var groupSids = new string[] { };
-                var filter = new Regex(@"^(s|S)(-\d+)+(,(s|S)(-\d+)+)*$");
+                var extraSids = new List<string>();
 
                 if (!string.IsNullOrEmpty(options.GetValue("extra")))
                 {
-                    if (filter.IsMatch(options.GetValue("extra")))
-                    {
-                        if (options.GetValue("extra").Contains(","))
-                        {
-                            groupSids = options.GetValue("extra").Split(',');
-                        }
-                        else
-                        {
-                            groupSids = new string[] { options.GetValue("extra") };
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("\n[!] Specified value for -e option is invalid format.\n");
+                    var sidInputs = options.GetValue("extra").Split(',');
 
-                        return;
+                    for (var idx = 0; idx < sidInputs.Length; idx++)
+                    {
+                        var sid = sidInputs[idx].Trim().ToUpper();
+
+                        if (extraSids.Contains(sid))
+                            continue;
+
+                        if (Regex.IsMatch(sid, @"^S(-[0-9]+)+$", RegexOptions.IgnoreCase))
+                            extraSids.Add(sid);
                     }
                 }
 
-                Modules.GetShell(
-                    options.GetValue("domain"),
-                    options.GetValue("username"),
-                    options.GetValue("sid"),
-                    groupSids);
+                Modules.GetShell(options.GetValue("command"), domain, name, stringSid, extraSids.ToArray());
             }
             else
             {
-                options.GetHelp();
-
-                Console.WriteLine("[-] Missing account information.\n");
+                Console.WriteLine("[-] -l or -x flag must be specified.");
             }
+
+            Console.WriteLine();
         }
     }
 }

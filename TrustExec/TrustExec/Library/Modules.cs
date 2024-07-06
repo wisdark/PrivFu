@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using TrustExec.Interop;
 
@@ -6,37 +8,42 @@ namespace TrustExec.Library
 {
     internal class Modules
     {
-        public static bool AddVirtualAccount(
-            string domain,
-            string username,
-            int domainRid)
+        public static bool AddVirtualAccount(string domain, string username, int domainRid)
         {
             if (string.IsNullOrEmpty(domain))
             {
-                Console.WriteLine("[!] Domain name is not specified.\n");
+                Console.WriteLine("[!] Domain name is not specified.");
 
                 return false;
             }
 
-            Console.WriteLine();
             Console.WriteLine("[>] Trying to get SYSTEM.");
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            var privs = new string[] {
+            var privs = new List<string> {
                 Win32Consts.SE_DEBUG_NAME,
                 Win32Consts.SE_IMPERSONATE_NAME
             };
 
-            if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
+            if (!Utilities.EnableTokenPrivileges(hCurrentToken, privs, out Dictionary<string, bool> _))
                 return false;
 
-            privs = new string[] {
+            privs = new List<string> {
                 Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
                 Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
+            Console.WriteLine("[>] Trying to impersonate as smss.exe.");
+
             if (!Utilities.ImpersonateAsSmss(privs))
+            {
+                Console.WriteLine("[-] Failed to impersonation.");
                 return false;
+            }
+            else
+            {
+                Console.WriteLine("[+] Impersonation is successful.");
+            }
 
             bool status = Utilities.AddVirtualAccount(domain, username, domainRid);
             NativeMethods.RevertToSelf();
@@ -45,88 +52,44 @@ namespace TrustExec.Library
         }
 
 
-        public static bool LookupSid(
-            string domain,
-            string username,
-            string sid)
+        public static bool LookupSid(string domain, string username, string sid)
         {
-            string result;
-            string accountName;
+            var status = false;
+            var peUse = SID_NAME_USE.Unknown;
 
-            if ((!string.IsNullOrEmpty(domain) || !string.IsNullOrEmpty(username)) &&
-                !string.IsNullOrEmpty(sid))
-            {
-                Console.WriteLine("\n[!] Username or domain name should not be specified with SID at a time.\n");
-
-                return false;
-            }
+            if ((!string.IsNullOrEmpty(domain) || !string.IsNullOrEmpty(username)) && !string.IsNullOrEmpty(sid))
+                Console.WriteLine("[!] Username or domain name should not be specified with SID at a time.");
             else if (!string.IsNullOrEmpty(domain) || !string.IsNullOrEmpty(username))
+                status = Helpers.ConvertAccountNameToSidString(ref username, ref domain, out sid, out peUse);
+            else if (!string.IsNullOrEmpty(sid))
+                status = Helpers.ConvertSidStringToAccountName(ref sid, out username, out domain, out peUse);
+            else
+                Console.WriteLine("[!] SID, domain name or username to lookup is required.");
+
+            if (status)
             {
-                if (!string.IsNullOrEmpty(domain) && domain.Trim() == ".")
-                    domain = Environment.MachineName;
+                string accountName;
 
                 if (!string.IsNullOrEmpty(domain) && !string.IsNullOrEmpty(username))
                     accountName = string.Format(@"{0}\{1}", domain, username);
-                else if (!string.IsNullOrEmpty(domain))
-                    accountName = domain;
                 else if (!string.IsNullOrEmpty(username))
                     accountName = username;
+                else if (!string.IsNullOrEmpty(domain))
+                    accountName = domain;
                 else
-                    return false;
+                    accountName = "N/A";
 
-                result = Helpers.ConvertAccountNameToSidString(
-                    ref accountName,
-                    out SID_NAME_USE peUse);
-
-                if (!string.IsNullOrEmpty(result))
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("[*] Result:");
-                    Console.WriteLine("    |-> Account Name : {0}", accountName);
-                    Console.WriteLine("    |-> SID          : {0}", result);
-                    Console.WriteLine("    |-> Account Type : {0}", peUse.ToString());
-                    Console.WriteLine();
-
-                    return true;
-                }
-                else
-                {
-                    Console.WriteLine("\n[*] No result.\n");
-
-                    return false;
-                }
-            }
-            else if (!string.IsNullOrEmpty(sid))
-            {
-                sid = sid.ToUpper();
-                result = Helpers.ConvertSidStringToAccountName(
-                    ref sid,
-                    out SID_NAME_USE peUse);
-
-                if (!string.IsNullOrEmpty(result))
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("[*] Result:");
-                    Console.WriteLine("    |-> Account Name : {0}", result);
-                    Console.WriteLine("    |-> SID          : {0}", sid);
-                    Console.WriteLine("    |-> Account Type : {0}", peUse.ToString());
-                    Console.WriteLine();
-
-                    return true;
-                }
-                else
-                {
-                    Console.WriteLine("\n[*] No result.\n");
-
-                    return false;
-                }
+                Console.WriteLine("[*] Result:");
+                Console.WriteLine("    [*] Account Name : {0}", accountName);
+                Console.WriteLine("    [*] SID          : {0}", sid  ?? "N/A");
+                Console.WriteLine("    [*] Account Type : {0}", peUse.ToString());
             }
             else
             {
-                Console.WriteLine("\n[!] SID, domain name or username to lookup is required.\n");
-
-                return false;
+                Console.WriteLine("[*] No result.");
             }
+
+            return status;
         }
 
 
@@ -134,30 +97,37 @@ namespace TrustExec.Library
         {
             if (string.IsNullOrEmpty(domain))
             {
-                Console.WriteLine("[!] Domain name is not specified.\n");
-
+                Console.WriteLine("[!] Domain name is not specified.");
                 return false;
             }
 
-            Console.WriteLine();
             Console.WriteLine("[>] Trying to get SYSTEM.");
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            var privs = new string[] {
+            var privs = new List<string> {
                 Win32Consts.SE_DEBUG_NAME,
                 Win32Consts.SE_IMPERSONATE_NAME
             };
 
-            if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
+            if (!Utilities.EnableTokenPrivileges(hCurrentToken, privs, out Dictionary<string, bool> _))
                 return false;
 
-            privs = new string[] {
+            privs = new List<string> {
                 Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
                 Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
+            Console.WriteLine("[>] Trying to impersonate as smss.exe.");
+
             if (!Utilities.ImpersonateAsSmss(privs))
+            {
+                Console.WriteLine("[-] Failed to impersonation.");
                 return false;
+            }
+            else
+            {
+                Console.WriteLine("[+] Impersonation is successful.");
+            }
 
             bool status = Utilities.RemoveVirtualAccount(domain, username);
             NativeMethods.RevertToSelf();
@@ -168,60 +138,86 @@ namespace TrustExec.Library
 
         public static bool RunTrustedInstallerProcess(string command, string extraSidsString, bool full)
         {
+            bool status;
             string execute;
             string[] extraSidsArray;
+            var isImpersonated = false;
 
             if (string.IsNullOrEmpty(command))
-            {
                 execute = @"C:\Windows\System32\cmd.exe";
-            }
             else
-            {
                 execute = command;
-            }
+
+            if (string.IsNullOrEmpty(extraSidsString))
+                extraSidsArray = new string[] { };
+            else
+                extraSidsArray = Helpers.ParseGroupSids(extraSidsString);
 
             Console.WriteLine();
 
-            if (string.IsNullOrEmpty(extraSidsString))
+            do
             {
-                extraSidsArray = new string[] { };
-            }
-            else
-            {
-                extraSidsArray = Helpers.ParseGroupSids(extraSidsString);
-            }
+                IntPtr hToken;
+                var privs = new List<string> {
+                    Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
+                    Win32Consts.SE_CREATE_TOKEN_NAME,
+                    Win32Consts.SE_INCREASE_QUOTA_NAME
+                };
 
-            Console.WriteLine("[>] Trying to get SYSTEM.");
+                Console.WriteLine("[>] Trying to get SYSTEM.");
 
-            IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            var privs = new string[] {
-                Win32Consts.SE_DEBUG_NAME,
-                Win32Consts.SE_IMPERSONATE_NAME
-            };
+                status = Utilities.EnableTokenPrivileges(
+                    WindowsIdentity.GetCurrent().Token,
+                    new List<string> { Win32Consts.SE_DEBUG_NAME, Win32Consts.SE_IMPERSONATE_NAME },
+                    out Dictionary<string, bool> adjustedPrivs);
 
-            if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
-                return false;
+                if (!status)
+                {
+                    foreach (var priv in adjustedPrivs)
+                    {
+                        if (!priv.Value)
+                            Console.WriteLine("[-] {0} is not available.", priv.Key);
+                    }
 
-            privs = new string[] {
-                Win32Consts.SE_CREATE_TOKEN_NAME,
-                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME
-            };
+                    break;
+                }
 
-            if (!Utilities.ImpersonateAsSmss(privs))
-                return false;
+                isImpersonated = Utilities.ImpersonateAsSmss(privs);
 
-            IntPtr hToken = Utilities.CreateTrustedInstallerToken(
-                TOKEN_TYPE.TokenPrimary,
-                SECURITY_IMPERSONATION_LEVEL.SecurityAnonymous,
-                extraSidsArray,
-                full);
+                if (!isImpersonated)
+                {
+                    Console.WriteLine("[-] Failed to impersonation.");
+                    break;
+                }
+                else
+                {
+                    Console.WriteLine("[+] Impersonation is successful.");
+                }
 
-            if (hToken == IntPtr.Zero)
-                return false;
+                hToken = Utilities.CreateTrustedInstallerToken(
+                    TOKEN_TYPE.TokenPrimary,
+                    SECURITY_IMPERSONATION_LEVEL.SecurityAnonymous,
+                    extraSidsArray,
+                    full);
 
-            bool status = Utilities.CreateTokenAssignedProcess(hToken, execute);
-            NativeMethods.CloseHandle(hToken);
-            NativeMethods.RevertToSelf();
+                if (hToken == IntPtr.Zero)
+                    break;
+
+                Console.WriteLine("[>] Trying to create token assigned process.");
+
+                status = Utilities.CreateTokenAssignedProcess(hToken, execute);
+                NativeMethods.CloseHandle(hToken);
+
+                if (!status)
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    Console.WriteLine("[-] Failed to create token assigned process.");
+                    Console.WriteLine("    |-> {0}", Helpers.GetWin32ErrorMessage(error, false));
+                }
+            } while (false);
+
+            if (isImpersonated)
+                NativeMethods.RevertToSelf();
 
             return status;
         }
@@ -235,61 +231,62 @@ namespace TrustExec.Library
             string extraSidsString,
             bool fullPrivilege)
         {
+            bool status;
             string execute;
             string[] extraSidsArray;
 
             if (string.IsNullOrEmpty(domain))
             {
-                Console.WriteLine("[!] Domain name is not specified.\n");
+                Console.WriteLine("[!] Domain name is not specified.");
 
                 return false;
             }
 
             if (string.IsNullOrEmpty(username))
             {
-                Console.WriteLine("[!] Username is not specified.\n");
-
+                Console.WriteLine("[!] Username is not specified.");
                 return false;
             }
 
             if (string.IsNullOrEmpty(command))
-            {
                 execute = @"C:\Windows\System32\cmd.exe";
-            }
             else
-            {
                 execute = command;
-            }
 
             Console.WriteLine();
 
             if (string.IsNullOrEmpty(extraSidsString))
-            {
                 extraSidsArray = new string[] { };
-            }
             else
-            {
                 extraSidsArray = Helpers.ParseGroupSids(extraSidsString);
-            }
 
             Console.WriteLine("[>] Trying to get SYSTEM.");
 
             IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            var privs = new string[] {
+            var privs = new List<string> {
                 Win32Consts.SE_DEBUG_NAME,
                 Win32Consts.SE_IMPERSONATE_NAME
             };
 
-            if (!Utilities.EnableMultiplePrivileges(hCurrentToken, privs))
+            if (!Utilities.EnableTokenPrivileges(hCurrentToken, privs, out Dictionary<string, bool> _))
                 return false;
 
-            privs = new string[] {
+            privs = new List<string> {
                 Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
                 Win32Consts.SE_INCREASE_QUOTA_NAME
             };
 
+            Console.WriteLine("[>] Trying to impersonate as smss.exe.");
+
             if (!Utilities.ImpersonateAsSmss(privs))
+            {
+                Console.WriteLine("[-] Failed to impersonation.");
                 return false;
+            }
+            else
+            {
+                Console.WriteLine("[+] Impersonation is successful.");
+            }
 
             IntPtr hToken = Utilities.CreateTrustedInstallerTokenWithVirtualLogon(
                 domain,
@@ -301,10 +298,20 @@ namespace TrustExec.Library
                 return false;
 
             if (fullPrivilege)
-                Utilities.EnableAllPrivileges(hToken);
+                Utilities.EnableAllTokenPrivileges(hToken, out Dictionary<string, bool> _);
 
-            bool status = Utilities.CreateTokenAssignedProcess(hToken, execute);
+            Console.WriteLine("[>] Trying to create token assigned process.");
+
+            status = Utilities.CreateTokenAssignedProcess(hToken, execute);
             NativeMethods.CloseHandle(hToken);
+
+            if (!status)
+            {
+                var error = Marshal.GetLastWin32Error();
+                Console.WriteLine("[-] Failed to create token assigned process.");
+                Console.WriteLine("    |-> {0}", Helpers.GetWin32ErrorMessage(error, false));
+            }
+
             NativeMethods.RevertToSelf();
 
             return status;

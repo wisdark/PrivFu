@@ -8,6 +8,7 @@ Codes in this repository are intended to help investigate how token privileges w
 ## Table Of Contents
 
 - [PrivFu](#privfu)
+  - [ArtsOfGetSystem](#ArtsOfGetSystem)
   - [KernelWritePoCs](#KernelWritePoCs)
   - [PrivEditor](#priveditor)
     - [getps Command](#getps-command)
@@ -21,10 +22,21 @@ Codes in this repository are intended to help investigate how token privileges w
   - [PrivilegedOperations](#privilegedoperations)
   - [S4uDelegator](#s4udelegator)
   - [SwitchPriv](#switchpriv)
+  - [TokenDump](#tokendump)
   - [TrustExec](#trustexec)
   - [UserRightsUtil](#userrightsutil)
   - [Reference](#reference)
   - [Acknowledgments](#acknowledgments)
+
+## ArtsOfGetSystem
+
+[Back to Top](#privfu)
+
+[Project](./ArtsOfGetSystem)
+
+This project covers how to get system privileges from high integrity level shell.
+See [README.md](./ArtsOfGetSystem/README.md) for details.
+
 
 ## KernelWritePoCs
 
@@ -646,7 +658,7 @@ Currently, released PoCs for a part of them.
 | [SeRestorePrivilegePoC](./PrivilegedOperations/SeRestorePrivilegePoC) | This PoC tries to write test file in `C:\Windows\System32\` by `SeRestorePrivilege`. |
 | [SeSecurityPrivilegePoC](./PrivilegedOperations/SeSecurityPrivilegePoC) | This PoC tries to read the latest security event by `SeSecurityPrivilege`. |
 | [SeShutdownPrivilegePoC](./PrivilegedOperations/SeShutdownPrivilegePoC) | This PoC tries to cause BSOD by `SeShutdownPrivilege`. |
-| [SeSystemEnvironmentPrivilegePoC](./PrivilegedOperations/SeSystemEnvironmentPrivilegePoC) | This PoC tries to enumerate system environment by `SeSystemEnvironmentPrivilege`. Works for UEFI based system only. |
+| [SeSystemEnvironmentPrivilegePoC](./PrivilegedOperations/SeSystemEnvironmentPrivilegePoC) | This PoC tries to enumerate system environment by `SeSystemEnvironmentPrivilege`. Works for UEFI based system only. Due to OS functionality, this PoC does not work for OSes earlier Windows 10 Build 1809. |
 | [SeTakeOwnershipPrivilegePoC](./PrivilegedOperations/SeTakeOwnershipPrivilegePoC) | This PoC tries to change the owner of `HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice` to the caller user account by `SeTakeOwnershipPrivilege`. |
 | [SeTcbPrivilegePoC](./PrivilegedOperations/SeTcbPrivilegePoC) | This PoC tries to perform S4U Logon to be `Builtin\Backup Operators` by `SeTcbPrivilege`. |
 | [SeTrustedCredManAccessPrivilegePoC](./PrivilegedOperations/SeTrustedCredManAccessPrivilegePoC) | This PoC tries to access DPAPI blob by `SeTrustedCredManAccessPrivilege`. |
@@ -659,109 +671,69 @@ Currently, released PoCs for a part of them.
 
 This tool is to perform S4U logon with SeTcbPrivilege.
 To perform S4U logon with this tool, administrative privileges are required.
-Currently, a few operations are implemented (more operations will be implemented in future):
 
 ```
-C:\dev>S4uDelegator.exe -h
+PS C:\Tools> .\S4uDelegator.exe -h
 
 S4uDelegator - Tool for S4U Logon.
 
 Usage: S4uDelegator.exe [Options]
 
-        -h, --help   : Displays this help message.
-        -m, --module : Specifies module name.
-
-Available Modules:
-
-        + lookup - Lookup account's SID.
-        + shell  - Perform S4U logon and get shell.
-
-[*] To see help for each modules, specify "-m <Module> -h" as arguments.
-
-[!] -m option is required.
+        -h, --help    : Displays this help message.
+        -l, --lookup  : Flag to lookup account SID.
+        -x, --execute : Flag to execute command.
+        -c, --command : Specifies command to execute. Default is cmd.exe.
+        -d, --domain  : Specifies domain name to lookup or S4U logon.
+        -e, --extra   : Specifies group SIDs you want to add for S4U logon with comma separation.
+        -n, --name    : Specifies account name to lookup or S4U logon.
+        -s, --sid     : Specifies SID to lookup.
 ```
 
-
-### lookup Module
-
-This command is to lookup account SID as follows:
+To use this tool, `-l` or `-x` flag must be specified.
+`-l` flag is for looking up account information as follows:
 
 ```
-C:\dev>S4uDelegator.exe -m lookup -d contoso -u david
+PS C:\Tools> .\S4uDelegator.exe -l -d contoso -n "domain admins"
 
-[*] Result:
-    |-> Account Name : CONTOSO\david
-    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-1104
-    |-> Account Type : SidTypeUser
+[*] Account Name : CONTOSO\Domain Admins
+[*] SID          : S-1-5-21-3654360273-254804765-2004310818-512
+[*] Account Type : Group
 
+PS C:\Tools> .\S4uDelegator.exe -l -s S-1-5-80-1913148863-3492339771-4165695881-2087618961-4109116736
 
-C:\dev>S4uDelegator.exe -m lookup -s S-1-5-21-3654360273-254804765-2004310818-500
-
-[*] Result:
-    |-> Account Name : CONTOSO\Administrator
-    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-500
-    |-> Account Type : SidTypeUser
-
-
-C:\dev>S4uDelegator.exe -m lookup -d contoso -u "domain admins"
-
-[*] Result:
-    |-> Account Name : CONTOSO\Domain Admins
-    |-> SID          : S-1-5-21-3654360273-254804765-2004310818-512
-    |-> Account Type : SidTypeGroup
+[*] Account Name : NT SERVICE\WinDefend
+[*] SID          : S-1-5-80-1913148863-3492339771-4165695881-2087618961-4109116736
+[*] Account Type : WellKnownGroup
 ```
 
-If you don't specify domain name with `-d` option, use local computer name as domain name:
+To execute command with S4U logon, set `-x` flag, and specify account name or SID as follows.
+Command to execute can be specified with `-c` option (default is `cmd.exe`):
 
 ```
-C:\dev>hostname
-CL01
-
-C:\dev>S4uDelegator.exe -m lookup -u admin
-
-[*] Result:
-    |-> Account Name : CL01\admin
-    |-> SID          : S-1-5-21-2659926013-4203293582-4033841475-500
-    |-> Account Type : SidTypeUser
-```
-
-
-### shell Module
-
-This command is to get interactive shell with S4U logon:
-
-```
-C:\dev>whoami /user
+PS C:\Tools> whoami /user
 
 USER INFORMATION
 ----------------
 
-User Name     SID
-============= =============================================
-contoso\david S-1-5-21-3654360273-254804765-2004310818-1104
+User Name    SID
+============ =============================================
+contoso\jeff S-1-5-21-3654360273-254804765-2004310818-1105
+PS C:\Tools> .\S4uDelegator.exe -x -d . -n admin
 
-C:\dev>S4uDelegator.exe -m shell -u admin
-
-[>] Target account to S4U:
-    |-> Account Name        : CL01\admin
-    |-> Account Sid         : S-1-5-21-2659926013-4203293582-4033841475-500
-    |-> Account Type        : SidTypeUser
-    |-> User Principal Name : (NULL)
+[*] S4U logon target information:
+    [*] Account : CL01\admin
+    [*] SID     : S-1-5-21-2659926013-4203293582-4033841475-500
+    [*] UPN     : (Null)
+    [*] Type    : User
 [>] Trying to get SYSTEM.
-[+] SeDebugPrivilege is enabled successfully.
-[>] Trying to impersonate as smss.exe.
-[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[>] Trying to impersonate thread token.
-    |-> Current Thread ID : 7140
-[+] Impersonation is successful.
-[>] Trying to MSV S4U logon.
+[+] Got SYSTEM privileges.
+[>] Trying to S4U logon.
 [+] S4U logon is successful.
 [>] Trying to create a token assigned process.
-
 Microsoft Windows [Version 10.0.18362.175]
 (c) 2019 Microsoft Corporation. All rights reserved.
 
-C:\dev>whoami /user
+C:\Tools>whoami /user
 
 USER INFORMATION
 ----------------
@@ -771,64 +743,70 @@ User Name  SID
 cl01\admin S-1-5-21-2659926013-4203293582-4033841475-500
 ```
 
-If you want to add token groups, you can specify them comma separated SID values with `-e` option as follows:
+If you want to add extra group information, set group SIDs with comma separated value with `-e` option as follows:
 
 ```
-C:\Tools>whoami
-contoso\david
+PS C:\Tools> whoami /user
 
-C:\Tools>S4uDelegator.exe -m shell -d contoso -u administrator -e s-1-5-18,S-1-5-19
+USER INFORMATION
+----------------
 
-[>] Target account to S4U:
-    |-> Account Name        : CONTOSO\administrator
-    |-> Account Sid         : S-1-5-21-3654360273-254804765-2004310818-500
-    |-> Account Type        : SidTypeUser
-    |-> User Principal Name : administrator@contoso.local
-[>] Group SID to add:
-    |-> [VALID] NT AUTHORITY\SYSTEM (SID : S-1-5-18) will be added.
-    |-> [VALID] NT AUTHORITY\LOCAL SERVICE (SID : S-1-5-19) will be added.
+User Name     SID
+============= =============================================
+contoso\david S-1-5-21-3654360273-254804765-2004310818-1104
+PS C:\Tools> .\S4uDelegator.exe -x -d contoso -n jeff -e S-1-5-32-544,S-1-5-20 -c powershell
+
+[*] S4U logon target information:
+    [*] Account : CONTOSO\jeff
+    [*] SID     : S-1-5-21-3654360273-254804765-2004310818-1105
+    [*] UPN     : jeff@contoso.local
+    [*] Type    : User
+[>] Verifying extra group SID(s).
+[*] BUILTIN\Administrators (SID : S-1-5-32-544) will be added as a group.
+[*] NT AUTHORITY\NETWORK SERVICE (SID : S-1-5-20) will be added as a group.
 [>] Trying to get SYSTEM.
-[+] SeDebugPrivilege is enabled successfully.
-[>] Trying to impersonate as smss.exe.
-[+] SeAssignPrimaryTokenPrivilege is enabled successfully.
-[+] SeIncreaseQuotaPrivilege is enabled successfully.
-[>] Trying to impersonate thread token.
-    |-> Current Thread ID : 2660
-[+] Impersonation is successful.
-[>] Trying to Kerberos S4U logon.
+[+] Got SYSTEM privileges.
+[>] Trying to S4U logon.
 [+] S4U logon is successful.
 [>] Trying to create a token assigned process.
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
 
-Microsoft Windows [Version 10.0.18362.175]
-(c) 2019 Microsoft Corporation. All rights reserved.
+Try the new cross-platform PowerShell https://aka.ms/pscore6
 
-C:\Tools>whoami
-contoso\administrator
+PS C:\Tools> whoami /user
 
-C:\Tools>whoami /groups
+USER INFORMATION
+----------------
 
+User Name    SID
+============ =============================================
+contoso\jeff S-1-5-21-3654360273-254804765-2004310818-1105
+PS C:\Tools> whoami /groups                                                                                             
 GROUP INFORMATION
 -----------------
 
-Group Name                                     Type             SID                                          Attributes
-============================================== ================ ============================================ ===============================================================
-Everyone                                       Well-known group S-1-1-0                                      Mandatory group, Enabled by default, Enabled group
-BUILTIN\Users                                  Alias            S-1-5-32-545                                 Mandatory group, Enabled by default, Enabled group
-BUILTIN\Administrators                         Alias            S-1-5-32-544                                 Mandatory group, Enabled by default, Enabled group, Group owner
-NT AUTHORITY\NETWORK                           Well-known group S-1-5-2                                      Mandatory group, Enabled by default, Enabled group
-NT AUTHORITY\Authenticated Users               Well-known group S-1-5-11                                     Mandatory group, Enabled by default, Enabled group
-NT AUTHORITY\This Organization                 Well-known group S-1-5-15                                     Mandatory group, Enabled by default, Enabled group
-NT AUTHORITY\SYSTEM                            Well-known group S-1-5-18                                     Mandatory group, Enabled by default, Enabled group
-NT AUTHORITY\LOCAL SERVICE                     Well-known group S-1-5-19                                     Mandatory group, Enabled by default, Enabled group
-CONTOSO\Group Policy Creator Owners            Group            S-1-5-21-3654360273-254804765-2004310818-520 Mandatory group, Enabled by default, Enabled group
-CONTOSO\Domain Admins                          Group            S-1-5-21-3654360273-254804765-2004310818-512 Mandatory group, Enabled by default, Enabled group
-CONTOSO\Schema Admins                          Group            S-1-5-21-3654360273-254804765-2004310818-518 Mandatory group, Enabled by default, Enabled group
-CONTOSO\Enterprise Admins                      Group            S-1-5-21-3654360273-254804765-2004310818-519 Mandatory group, Enabled by default, Enabled group
-Service asserted identity                      Well-known group S-1-18-2                                     Mandatory group, Enabled by default, Enabled group
-CONTOSO\Denied RODC Password Replication Group Alias            S-1-5-21-3654360273-254804765-2004310818-572 Mandatory group, Enabled by default, Enabled group, Local Group
-Mandatory Label\System Mandatory Level         Label            S-1-16-16384
+Group Name                             Type             SID                                           Attributes        
+====================================== ================ ============================================= ==================================================
+Everyone                               Well-known group S-1-1-0                                       Mandatory group, Enabled by default, Enabled group
+BUILTIN\Users                          Alias            S-1-5-32-545                                  Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\NETWORK                   Well-known group S-1-5-2                                       Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\Authenticated Users       Well-known group S-1-5-11                                      Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\This Organization         Well-known group S-1-5-15                                      Mandatory group, Enabled by default, Enabled group
+BUILTIN\Administrators                 Alias            S-1-5-32-544                                  Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\NETWORK SERVICE           Well-known group S-1-5-20                                      Mandatory group, Enabled by default, Enabled group
+CONTOSO\ServerAdmins                   Group            S-1-5-21-3654360273-254804765-2004310818-1103 Mandatory group, Enabled by default, Enabled group
+Service asserted identity              Well-known group S-1-18-2                                      Mandatory group, Enabled by default, Enabled group
+Mandatory Label\System Mandatory Level Label            S-1-16-16384
 ```
 
+> __WARNING__
+>
+> If you try S4U logon with unprivileged account for target machine, you will get error `0xC0000142` (`STATUS_DLL_INIT_FAILED`) and command cannot be executed.
+> To avoid this problem, add privileged groups as extra groups with `-e` option.
+> 
+> Additionaly, some account cannot be specified as extra group (e.g. `NT SERVICE\TrustedInstaller`) for S4U logon.
+> If you set such group accounts as extra group, S4U logon will be failed with error `0x00000005` (`ERROR_ACCESS_DENIED`)
 
 
 ## SwitchPriv
@@ -840,165 +818,338 @@ Mandatory Label\System Mandatory Level         Label            S-1-16-16384
 This tool is to enable or disable specific token privileges for a process:
 
 ```
-C:\dev>SwitchPriv.exe -h
+PS C:\Dev> .\SwitchPriv.exe -h
 
 SwitchPriv - Tool to control token privileges.
 
 Usage: SwitchPriv.exe [Options]
 
         -h, --help      : Displays this help message.
-        -e, --enable    : Specifies token privilege to enable. Case insensitive.
-        -d, --disable   : Specifies token privilege to disable. Case insensitive.
-        -r, --remove    : Specifies token privilege to remove. Case insensitive.
+        -d, --disable   : Specifies token privilege to disable or "all".
+        -e, --enable    : Specifies token privilege to enable or "all".
+        -f, --filter    : Specifies token privilege you want to remain.
+        -i, --integrity : Specifies integrity level to set in decimal value.
         -p, --pid       : Specifies the target PID. Default specifies PPID.
-        -i, --integrity : Specifies integrity level to set.
+        -r, --remove    : Specifies token privilege to remove or "all".
+        -s, --search    : Specifies token privilege to search.
         -g, --get       : Flag to get available privileges for the target process.
-        -s, --system    : Flag to run as "NT AUTHORITY\SYSTEM".
-        -l, --list      : Flag to list values for --enable, --disable, --remove and --integrity options.
+        -l, --list      : Flag to list values for --integrity options.
+        -S, --system    : Flag to run as "NT AUTHORITY\SYSTEM".
 ```
 
-To list values for `--enable`, `--disable`, `--remove` and `--integrity` options, execute this tool with `--list` flag as follows:
+To list values for `--integrity` option, execute with `--list` flag as follows:
 
 ```
-C:\dev>SwitchPriv.exe -l
-
-Available values for --enable, --disable, and --remove options:
-    + CreateToken                    : Specifies SeCreateTokenPrivilege.
-    + AssignPrimaryToken             : Specifies SeAssignPrimaryTokenPrivilege.
-    + LockMemory                     : Specifies SeLockMemoryPrivilege.
-    + IncreaseQuota                  : Specifies SeIncreaseQuotaPrivilege.
-    + MachineAccount                 : Specifies SeMachineAccountPrivilege.
-    + Tcb                            : Specifies SeTcbPrivilege.
-    + Security                       : Specifies SeSecurityPrivilege.
-    + TakeOwnership                  : Specifies SeTakeOwnershipPrivilege.
-    + LoadDriver                     : Specifies SeLoadDriverPrivilege.
-
---snip--
+PS C:\Dev> .\SwitchPriv.exe -l
 
 Available values for --integrity option:
-    + 0 : UNTRUSTED_MANDATORY_LEVEL
-    + 1 : LOW_MANDATORY_LEVEL
-    + 2 : MEDIUM_MANDATORY_LEVEL
-    + 3 : MEDIUM_PLUS_MANDATORY_LEVEL
-    + 4 : HIGH_MANDATORY_LEVEL
-    + 5 : SYSTEM_MANDATORY_LEVEL
-    + 6 : PROTECTED_MANDATORY_LEVEL
-    + 7 : SECURE_MANDATORY_LEVEL
+
+    * 0 : UNTRUSTED_MANDATORY_LEVEL
+    * 1 : LOW_MANDATORY_LEVEL
+    * 2 : MEDIUM_MANDATORY_LEVEL
+    * 3 : MEDIUM_PLUS_MANDATORY_LEVEL
+    * 4 : HIGH_MANDATORY_LEVEL
+    * 5 : SYSTEM_MANDATORY_LEVEL
+    * 6 : PROTECTED_MANDATORY_LEVEL
+    * 7 : SECURE_MANDATORY_LEVEL
+
+Example :
+
+    * Down a specific process' integrity level to Low.
+
+        PS C:\> .\SwitchPriv.exe -p 4142 -s 1
+
+Protected and Secure level should not be available, but left for research purpose.
 ```
 
-If you want to control privilege for a remote process, specify the target PID as follows.
-For example, to enable SeUndockPrivilege for PID 7584, execute with `--enable` option as follows:
+The target process' PID is specified with `-p` option.
+You can list available privileges for the target process with `-g` flag and `-p` option as follows:
 
 ```
-C:\dev>SwitchPriv.exe -p 7584 -e undock
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
 
-[>] Trying to enable SeUndockPrivilege.
-    |-> Target PID   : 7584
-    |-> Process Name : notepad
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Disabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+```
+
+When `-p` option is not specified, PID will be parent PID for this tool:
+
+```
+PS C:\Dev> .\SwitchPriv.exe -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 6772
+    [*] Process Name : powershell
+[+] Got 5 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Disabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+```
+
+Privilege name to control is specfied with any case insensitive strings which can specify a unique privilege name in available privileges for the target process.
+For example, to enable `SeUndockPrivilege` for the target process, execute with `--enable` option as follows:
+
+```
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Disabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -e und
+
+[>] Trying to enable a token privilege.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
 [+] SeUndockPrivilege is enabled successfully.
-```
+[*] Done.
 
-To list current token privileges for the target process, execute with `--get` flag as follws:
-
-```
-C:\dev>SwitchPriv.exe -p 7584 -g
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
 
 [>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 7584
-    |-> Process Name : notepad
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
 
-Privilege Name                             State
-========================================== ========
-SeShutdownPrivilege                        Disabled
-SeChangeNotifyPrivilege                    Enabled
-SeUndockPrivilege                          Enabled
-SeIncreaseWorkingSetPrivilege              Disabled
-SeTimeZonePrivilege                        Disabled
+PRIVILEGES INFORMATION
+----------------------
 
-[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Enabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
 ```
 
-To perform any actions as SYSTEM, set `--system` flag as follows:
+When you set bogus string which can not specify a unique privilege name, you will get following message:
 
 ```
-C:\dev>SwitchPriv.exe -p 1400 -g -s
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -e se
+
+[>] Trying to enable a token privilege.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[-] Cannot specify a unique privilege to enable.
+    [*] SeShutdownPrivilege
+    [*] SeChangeNotifyPrivilege
+    [*] SeUndockPrivilege
+    [*] SeIncreaseWorkingSetPrivilege
+    [*] SeTimeZonePrivilege
+[*] Done.
+```
+
+For example, to enable SeChangeNotifyPrivilege, execute with `--disable` option as follows:
+
+```
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
 
 [>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 1400
-    |-> Process Name : svchost
-[>] Trying to get SYSTEM.
-[>] Trying to impersonate thread token.
-    |-> Current Thread ID : 4572
-[>] Trying to impersonate as smss.exe.
-[+] Impersonation is successful.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
 
+PRIVILEGES INFORMATION
+----------------------
 
-Privilege Name                             State
-========================================== ========
-SeAssignPrimaryTokenPrivilege              Disabled
-SeLockMemoryPrivilege                      Enabled
-SeIncreaseQuotaPrivilege                   Disabled
-SeTcbPrivilege                             Enabled
-SeSecurityPrivilege                        Disabled
-SeTakeOwnershipPrivilege                   Disabled
-SeLoadDriverPrivilege                      Disabled
-SeSystemProfilePrivilege                   Enabled
-SeSystemtimePrivilege                      Disabled
-SeProfileSingleProcessPrivilege            Enabled
-SeIncreaseBasePriorityPrivilege            Enabled
-SeCreatePagefilePrivilege                  Enabled
-SeCreatePermanentPrivilege                 Enabled
-SeBackupPrivilege                          Disabled
-SeRestorePrivilege                         Disabled
-SeShutdownPrivilege                        Disabled
-SeDebugPrivilege                           Enabled
-SeAuditPrivilege                           Enabled
-SeSystemEnvironmentPrivilege               Disabled
-SeChangeNotifyPrivilege                    Enabled
-SeUndockPrivilege                          Disabled
-SeManageVolumePrivilege                    Disabled
-SeImpersonatePrivilege                     Enabled
-SeCreateGlobalPrivilege                    Enabled
-SeIncreaseWorkingSetPrivilege              Enabled
-SeTimeZonePrivilege                        Enabled
-SeCreateSymbolicLinkPrivilege              Enabled
-SeDelegateSessionUserImpersonatePrivilege  Enabled
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Enabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
 
-[*] Integrity Level : SYSTEM_MANDATORY_LEVEL
-```
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
 
-To enable SeChangeNotifyPrivilege, execute with `--disable` option as follows:
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -d chan
 
-```
-C:\dev>SwitchPriv.exe -p 7584 -d changenotify
-
-[>] Trying to disable SeChangeNotifyPrivilege.
-    |-> Target PID   : 7584
-    |-> Process Name : notepad
+[>] Trying to disable a token privilege.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
 [+] SeChangeNotifyPrivilege is disabled successfully.
+[*] Done.
 
-
-C:\dev>SwitchPriv.exe -p 7584 -g
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
 
 [>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 7584
-    |-> Process Name : notepad
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
 
-Privilege Name                             State
-========================================== ========
-SeShutdownPrivilege                        Disabled
-SeChangeNotifyPrivilege                    Disabled
-SeUndockPrivilege                          Enabled
-SeIncreaseWorkingSetPrivilege              Disabled
-SeTimeZonePrivilege                        Disabled
+PRIVILEGES INFORMATION
+----------------------
 
-[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
+Privilege Name                State
+============================= ==========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Disabled
+SeUndockPrivilege             Enabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
 ```
 
-If you don't specify `--pid` option, targets parent process of this tool as follows:
+To remove privilege, use `--remove` option as follows:
 
 ```
-C:\dev>whoami /priv
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 5 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                State
+============================= ==========================
+SeShutdownPrivilege           Disabled
+SeChangeNotifyPrivilege       EnabledByDefault, Disabled
+SeUndockPrivilege             Enabled
+SeIncreaseWorkingSetPrivilege Disabled
+SeTimeZonePrivilege           Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -r inc
+
+[>] Trying to remove a token privilege.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] SeIncreaseWorkingSetPrivilege is removed successfully.
+[*] Done.
+
+PS C:\Dev> .\SwitchPriv.exe -p 9408 -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 9408
+    [*] Process Name : Notepad
+[+] Got 4 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name          State
+======================= ==========================
+SeShutdownPrivilege     Disabled
+SeChangeNotifyPrivilege EnabledByDefault, Disabled
+SeUndockPrivilege       Enabled
+SeTimeZonePrivilege     Disabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+```
+
+If you want to test a specific privilege, you can remove all privileges other than you want to test with `-f` option as follows:
+
+```
+PS C:\Dev> .\SwitchPriv.exe -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 4392
+    [*] Process Name : powershell
+[+] Got 5 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                State
+============================= =========================
+SeShutdownPrivilege           Enabled
+SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+SeUndockPrivilege             Enabled
+SeIncreaseWorkingSetPrivilege Enabled
+SeTimeZonePrivilege           Enabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+
+PS C:\Dev> .\SwitchPriv.exe -f tim
+
+[>] Trying to remove all token privileges except one.
+    [*] Target PID   : 4392
+    [*] Process Name : powershell
+[>] Trying to remove all privileges except for SeTimeZonePrivilege.
+[+] SeShutdownPrivilege is removed successfully.
+[+] SeChangeNotifyPrivilege is removed successfully.
+[+] SeUndockPrivilege is removed successfully.
+[+] SeIncreaseWorkingSetPrivilege is removed successfully.
+[*] Done.
+
+PS C:\Dev> .\SwitchPriv.exe -g
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 4392
+    [*] Process Name : powershell
+[+] Got 1 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name      State
+=================== =======
+SeTimeZonePrivilege Enabled
+
+[*] Integrity Level : Medium Mandatory Level
+[*] Done.
+```
+
+To enable, disable or remove all available token privileges, specify `all` as the value for `--enable`, `--disable` or `--remove` option:
+
+```
+PS C:\Dev> whoami /priv
 
 PRIVILEGES INFORMATION
 ----------------------
@@ -1010,109 +1161,18 @@ SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
 SeUndockPrivilege             Remove computer from docking station Disabled
 SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
 SeTimeZonePrivilege           Change the time zone                 Disabled
-
-C:\dev>SwitchPriv.exe -e timezone
-
-[>] Trying to enable SeTimeZonePrivilege.
-    |-> Target PID   : 4464
-    |-> Process Name : cmd
-[+] SeTimeZonePrivilege is enabled successfully.
-
-
-C:\dev>whoami /priv
-
-PRIVILEGES INFORMATION
-----------------------
-
-Privilege Name                Description                          State
-============================= ==================================== ========
-SeShutdownPrivilege           Shut down the system                 Disabled
-SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
-SeUndockPrivilege             Remove computer from docking station Disabled
-SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
-SeTimeZonePrivilege           Change the time zone                 Enabled
-
-C:\dev>SwitchPriv.exe -g
-
-[>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 4464
-    |-> Process Name : cmd
-
-Privilege Name                             State
-========================================== ========
-SeShutdownPrivilege                        Disabled
-SeChangeNotifyPrivilege                    Enabled
-SeUndockPrivilege                          Disabled
-SeIncreaseWorkingSetPrivilege              Disabled
-SeTimeZonePrivilege                        Enabled
-
-[*] Integrity Level : MEDIUM_MANDATORY_LEVEL
-```
-
-To remove privilege, use `--remove` option as follows:
-
-```
-C:\dev>whoami /priv
-
-PRIVILEGES INFORMATION
-----------------------
-
-Privilege Name                Description                          State
-============================= ==================================== ========
-SeShutdownPrivilege           Shut down the system                 Disabled
-SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
-SeUndockPrivilege             Remove computer from docking station Disabled
-SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
-SeTimeZonePrivilege           Change the time zone                 Enabled
-
-C:\dev>SwitchPriv.exe -r timezone
-
-[>] Trying to enable SeTimeZonePrivilege.
-    |-> Target PID   : 4464
-    |-> Process Name : cmd
-[+] SeTimeZonePrivilege is removed successfully.
-
-
-C:\dev>whoami /priv
-
-PRIVILEGES INFORMATION
-----------------------
-
-Privilege Name                Description                          State
-============================= ==================================== ========
-SeShutdownPrivilege           Shut down the system                 Disabled
-SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
-SeUndockPrivilege             Remove computer from docking station Disabled
-SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
-```
-
-To enable, disable or remove all available token privileges, specify `all` as the value for `--enable`, `--disable` or `--remove` option:
-
-```
-C:\dev>whoami /priv
-
-PRIVILEGES INFORMATION
-----------------------
-
-Privilege Name                Description                          State
-============================= ==================================== ========
-SeShutdownPrivilege           Shut down the system                 Disabled
-SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
-SeUndockPrivilege             Remove computer from docking station Disabled
-SeIncreaseWorkingSetPrivilege Increase a process working set       Disabled
-
-C:\dev>SwitchPriv.exe -e all
+PS C:\Dev> .\SwitchPriv.exe -e all
 
 [>] Trying to enable all token privileges.
-    |-> Target PID   : 15240
-    |-> Process Name : cmd
+    [*] Target PID   : 6772
+    [*] Process Name : powershell
 [+] SeShutdownPrivilege is enabled successfully.
 [+] SeUndockPrivilege is enabled successfully.
 [+] SeIncreaseWorkingSetPrivilege is enabled successfully.
+[+] SeTimeZonePrivilege is enabled successfully.
 [*] Done.
 
-
-C:\dev>whoami /priv
+PS C:\Dev> whoami /priv
 
 PRIVILEGES INFORMATION
 ----------------------
@@ -1123,88 +1183,819 @@ SeShutdownPrivilege           Shut down the system                 Enabled
 SeChangeNotifyPrivilege       Bypass traverse checking             Enabled
 SeUndockPrivilege             Remove computer from docking station Enabled
 SeIncreaseWorkingSetPrivilege Increase a process working set       Enabled
+SeTimeZonePrivilege           Change the time zone                 Enabled
 ```
 
-To find process have a specific privilege, use `--find` option as follows:
+To find process have a specific privilege, use `-s` option as follows:
 
 ```
-C:\dev>SwitchPriv.exe -f createtoken
+PS C:\Dev> .\SwitchPriv.exe -s createt
 
-[>] Searching process have SeCreateTokenPrivilege.
-[+] Following Processes have SeCreateTokenPrivilege.
-    |-> smss (PID : 340)
-    |-> csrss (PID : 532)
-    |-> lsass (PID : 700)
-    |-> csrss (PID : 464)
-    |-> Memory Compression (PID : 1828)
-[+] 5 process have SeCreateTokenPrivilege.
-[*] Access is denied by following 2 process.
-    |-> System (PID : 4)
-    |-> Idle (PID : 0)
+[>] Searching processes have SeCreateTokenPrivilege.
+[+] Got 5 process(es).
+    [*] Memory Compression (PID : 2548)
+    [*] smss (PID : 372)
+    [*] lsass (PID : 736)
+    [*] csrss (PID : 584)
+    [*] csrss (PID : 504)
+[*] Access is denied by following 2 process(es).
+    [*] System (PID : 4)
+    [*] Idle (PID : 0)
+[*] Done.
 
 
-C:\dev>SwitchPriv.exe -g -p 464
+PS C:\Dev> .\SwitchPriv.exe -g -p 2548
 
 [>] Trying to get available token privilege(s) for the target process.
-    |-> Target PID   : 464
-    |-> Process Name : csrss
+    [*] Target PID   : 2548
+    [*] Process Name : Memory Compression
+[+] Got 31 token privilege(s).
 
-Privilege Name                             State
-========================================== ========
-SeCreateTokenPrivilege                     Disabled
-SeAssignPrimaryTokenPrivilege              Disabled
-SeLockMemoryPrivilege                      Enabled
-SeIncreaseQuotaPrivilege                   Disabled
-SeTcbPrivilege                             Enabled
-SeSecurityPrivilege                        Disabled
-SeTakeOwnershipPrivilege                   Disabled
-SeLoadDriverPrivilege                      Disabled
-SeSystemProfilePrivilege                   Enabled
-SeSystemtimePrivilege                      Disabled
-SeProfileSingleProcessPrivilege            Enabled
-SeIncreaseBasePriorityPrivilege            Enabled
-SeCreatePagefilePrivilege                  Enabled
-SeCreatePermanentPrivilege                 Enabled
-SeBackupPrivilege                          Disabled
-SeRestorePrivilege                         Disabled
-SeShutdownPrivilege                        Disabled
-SeDebugPrivilege                           Enabled
-SeAuditPrivilege                           Enabled
-SeSystemEnvironmentPrivilege               Disabled
-SeChangeNotifyPrivilege                    Enabled
-SeUndockPrivilege                          Disabled
-SeManageVolumePrivilege                    Disabled
-SeImpersonatePrivilege                     Enabled
-SeCreateGlobalPrivilege                    Enabled
-SeRelabelPrivilege                         Disabled
-SeIncreaseWorkingSetPrivilege              Enabled
-SeTimeZonePrivilege                        Enabled
-SeCreateSymbolicLinkPrivilege              Enabled
-SeDelegateSessionUserImpersonatePrivilege  Enabled
+PRIVILEGES INFORMATION
+----------------------
 
-[*] Integrity Level : SYSTEM_MANDATORY_LEVEL
+Privilege Name                            State
+========================================= =========================
+SeCreateTokenPrivilege                    Disabled
+SeAssignPrimaryTokenPrivilege             Disabled
+SeLockMemoryPrivilege                     EnabledByDefault, Enabled
+SeIncreaseQuotaPrivilege                  Disabled
+SeTcbPrivilege                            EnabledByDefault, Enabled
+SeSecurityPrivilege                       Disabled
+SeTakeOwnershipPrivilege                  Disabled
+SeLoadDriverPrivilege                     Disabled
+SeSystemProfilePrivilege                  EnabledByDefault, Enabled
+SeSystemtimePrivilege                     Disabled
+SeProfileSingleProcessPrivilege           EnabledByDefault, Enabled
+SeIncreaseBasePriorityPrivilege           EnabledByDefault, Enabled
+SeCreatePagefilePrivilege                 EnabledByDefault, Enabled
+SeCreatePermanentPrivilege                EnabledByDefault, Enabled
+SeBackupPrivilege                         Disabled
+SeRestorePrivilege                        Disabled
+SeShutdownPrivilege                       Disabled
+SeDebugPrivilege                          EnabledByDefault, Enabled
+SeAuditPrivilege                          EnabledByDefault, Enabled
+SeSystemEnvironmentPrivilege              Disabled
+SeChangeNotifyPrivilege                   EnabledByDefault, Enabled
+SeUndockPrivilege                         Disabled
+SeManageVolumePrivilege                   Disabled
+SeImpersonatePrivilege                    EnabledByDefault, Enabled
+SeCreateGlobalPrivilege                   EnabledByDefault, Enabled
+SeTrustedCredManAccessPrivilege           Disabled
+SeRelabelPrivilege                        Disabled
+SeIncreaseWorkingSetPrivilege             EnabledByDefault, Enabled
+SeTimeZonePrivilege                       EnabledByDefault, Enabled
+SeCreateSymbolicLinkPrivilege             EnabledByDefault, Enabled
+SeDelegateSessionUserImpersonatePrivilege EnabledByDefault, Enabled
+
+[*] Integrity Level : System Mandatory Level
+[*] Done.
 ```
-
-
 
 If you want to set integrity level, use `--integrity` option as follows:
 
 ```
-C:\dev>whoami /groups | findstr /i level
+PS C:\Dev> whoami /groups | findstr /i level
 Mandatory Label\Medium Mandatory Level                        Label            S-1-16-8192
 
+PS C:\Dev> .\SwitchPriv.exe -i 1
 
-C:\dev>SwitchPriv.exe -i 1
+[>] Trying to update Integrity Level.
+    [*] Target PID   : 3436
+    [*] Process Name : powershell
+[>] Trying to update Integrity Level to LOW_MANDATORY_LEVEL.
+[+] Integrity Level is updated successfully.
+[*] Done.
 
-[>] Trying to set integrity level.
-    |-> Target PID   : 5144
-    |-> Process Name : cmd
-[>] Trying to set LOW_MANDATORY_LEVEL.
-[+] LOW_MANDATORY_LEVEL is set successfully.
-
-C:\dev>whoami /groups | findstr /i level
+PS C:\Dev> whoami /groups | findstr /i level
 Mandatory Label\Low Mandatory Level                           Label            S-1-16-4096
 ```
+
+To perform any actions as SYSTEM, set `-S` flag as follows (`SeDebugPrivilege` and `SeImpersonatePrivilege` are required):
+
+```
+PS C:\Dev> .\SwitchPriv.exe -g -p 2548 -S
+
+[>] Trying to get available token privilege(s) for the target process.
+    [*] Target PID   : 2548
+    [*] Process Name : Memory Compression
+[>] Trying to get SYSTEM.
+[+] Got SYSTEM privilege.
+[+] Got 31 token privilege(s).
+
+PRIVILEGES INFORMATION
+----------------------
+
+Privilege Name                            State
+========================================= =========================
+SeCreateTokenPrivilege                    Disabled
+SeAssignPrimaryTokenPrivilege             Disabled
+SeLockMemoryPrivilege                     EnabledByDefault, Enabled
+SeIncreaseQuotaPrivilege                  Disabled
+SeTcbPrivilege                            EnabledByDefault, Enabled
+SeSecurityPrivilege                       Disabled
+SeTakeOwnershipPrivilege                  Disabled
+SeLoadDriverPrivilege                     Disabled
+SeSystemProfilePrivilege                  EnabledByDefault, Enabled
+SeSystemtimePrivilege                     Disabled
+SeProfileSingleProcessPrivilege           EnabledByDefault, Enabled
+SeIncreaseBasePriorityPrivilege           EnabledByDefault, Enabled
+SeCreatePagefilePrivilege                 EnabledByDefault, Enabled
+SeCreatePermanentPrivilege                EnabledByDefault, Enabled
+SeBackupPrivilege                         Disabled
+SeRestorePrivilege                        Disabled
+SeShutdownPrivilege                       Disabled
+SeDebugPrivilege                          EnabledByDefault, Enabled
+SeAuditPrivilege                          EnabledByDefault, Enabled
+SeSystemEnvironmentPrivilege              Disabled
+SeChangeNotifyPrivilege                   EnabledByDefault, Enabled
+SeUndockPrivilege                         Disabled
+SeManageVolumePrivilege                   Disabled
+SeImpersonatePrivilege                    EnabledByDefault, Enabled
+SeCreateGlobalPrivilege                   EnabledByDefault, Enabled
+SeTrustedCredManAccessPrivilege           Disabled
+SeRelabelPrivilege                        Disabled
+SeIncreaseWorkingSetPrivilege             EnabledByDefault, Enabled
+SeTimeZonePrivilege                       EnabledByDefault, Enabled
+SeCreateSymbolicLinkPrivilege             EnabledByDefault, Enabled
+SeDelegateSessionUserImpersonatePrivilege EnabledByDefault, Enabled
+
+[*] Integrity Level : System Mandatory Level
+[*] Done.
+```
+
+
+## TokenDump
+
+[Back to Top](#privfu)
+
+[Project](./TokenDump)
+
+
+This tool is a utility to inspect token information:
+
+```
+C:\Dev>.\TokenDump.exe -h
+
+TokenDump - Tool to dump processs token information.
+
+Usage: TokenDump.exe [Options]
+
+        -h, --help    : Displays this help message.
+        -d, --debug   : Flag to enable SeDebugPrivilege.
+        -e, --enum    : Flag to enumerate brief information tokens for processes or handles.
+        -T, --thread  : Flag to scan thead tokens. Use with -e option.
+        -H, --handle  : Flag to scan token handles. Use with -e option.
+        -s, --scan    : Flag to get verbose information for a specific process, thread or handle.
+        -a, --account : Specifies account name filter string. Use with -e flag.
+        -p, --pid     : Specifies a target PID in decimal format. Use with -s flag, or -e and -H flag.
+        -t, --tid     : Specifies a target TID in decimal format. Use with -s flag and -p option.
+        -v, --value   : Specifies a token handle value in hex format. Use with -s flag and -p option.
+```
+
+To enumerate token for all processes, just set `-e` flag:
+
+```
+C:\Dev>.\TokenDump.exe -e
+
+[>] Trying to enumerate process token.
+
+ PID Session Process Name                Token User                   Integrity Restricted AppContainer
+==== ======= =========================== ============================ ========= ========== ============
+5004       0 svchost.exe                 NT AUTHORITY\SYSTEM          System    False      False
+3728       0 conhost.exe                 NT AUTHORITY\SYSTEM          System    False      False
+
+--snip--
+
+6712       0 svchost.exe                 NT AUTHORITY\LOCAL SERVICE   System    False      False
+1972       0 svchost.exe                 NT AUTHORITY\SYSTEM          System    False      False
+
+[+] Got 129 token information.
+[*] Found 7 account(s).
+    [*] NT AUTHORITY\SYSTEM
+    [*] dev22h2\user
+    [*] NT AUTHORITY\LOCAL SERVICE
+    [*] NT AUTHORITY\NETWORK SERVICE
+    [*] Font Driver Host\UMFD-0
+    [*] Font Driver Host\UMFD-1
+    [*] Window Manager\DWM-1
+[*] Done.
+```
+
+If you want to enable SeDebugPrivilege, set `-d` flag as follows:
+
+```
+C:\Dev>.\TokenDump.exe -e -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate process token.
+
+ PID Session Process Name                Token User                   Integrity Restricted AppContainer
+==== ======= =========================== ============================ ========= ========== ============
+5004       0 svchost.exe                 NT AUTHORITY\SYSTEM          System    False      False
+3728       0 conhost.exe                 NT AUTHORITY\SYSTEM          System    False      False
+3740       0 vm3dservice.exe             NT AUTHORITY\SYSTEM          System    False      False
+
+--snip--
+```
+
+When set `-H` flag with `-e` flag, TokenDump tries to enumerate Token handles information:
+
+```
+C:\Dev>.\TokenDump.exe -e -H -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate token handles.
+
+[Token Handle(s) - winlogon.exe (PID: 704)]
+
+Handle Session Token User          Integrity Restricted AppContainer Token Type    Impersonation Level
+====== ======= =================== ========= ========== ============ ============= ===================
+ 0x2B0       1 NT AUTHORITY\SYSTEM System    False      False        Primary       Anonymous
+ 0x2B4       1 NT AUTHORITY\SYSTEM System    False      False        Primary       Anonymous
+ 0x38C       1 dev22h2\user        Medium    False      False        Primary       Impersonation
+
+--snip--
+
+[Token Handle(s) - svchost.exe (PID: 3272)]
+
+Handle Session Token User                 Integrity Restricted AppContainer Token Type Impersonation Level
+====== ======= ========================== ========= ========== ============ ========== ===================
+ 0x168       0 NT AUTHORITY\LOCAL SERVICE System    False      False        Primary    Anonymous
+
+[+] Got 819 handle(s).
+[*] Found 8 account(s).
+    [*] NT AUTHORITY\SYSTEM
+    [*] dev22h2\user
+    [*] Font Driver Host\UMFD-1
+    [*] Font Driver Host\UMFD-0
+    [*] NT AUTHORITY\NETWORK SERVICE
+    [*] Window Manager\DWM-1
+    [*] NT AUTHORITY\LOCAL SERVICE
+    [*] NT AUTHORITY\ANONYMOUS LOGON
+[*] Done.
+```
+
+When specified PID with `-p` option, TokenDup enumerate only the specified process handles:
+
+```
+C:\Dev>.\TokenDump.exe -e -H -d -p 704
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate token handles.
+
+[Token Handle(s) - winlogon.exe (PID: 704)]
+
+Handle Session Token User          Integrity Restricted AppContainer Token Type    Impersonation Level
+====== ======= =================== ========= ========== ============ ============= ===================
+ 0x2B0       1 NT AUTHORITY\SYSTEM System    False      False        Primary       Anonymous
+ 0x2B4       1 NT AUTHORITY\SYSTEM System    False      False        Primary       Anonymous
+ 0x38C       1 dev22h2\user        Medium    False      False        Primary       Impersonation
+ 0x398       1 dev22h2\user        High      False      False        Primary       Identification
+ 0x3C4       1 dev22h2\user        Medium    False      False        Impersonation Impersonation
+ 0x3C8       1 dev22h2\user        Medium    False      False        Impersonation Impersonation
+ 0x3D0       1 dev22h2\user        Medium    False      False        Impersonation Impersonation
+ 0x3D4       1 dev22h2\user        Medium    False      False        Impersonation Impersonation
+
+[+] Got 8 handle(s).
+[*] Found 2 account(s).
+    [*] NT AUTHORITY\SYSTEM
+    [*] dev22h2\user
+[*] Done.
+```
+
+To enumerate impersonated thread token, set `-T` flag as well as `-e` flag as follows:
+
+```
+C:\Dev>.\TokenDump.exe -e -T -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate impersonated threads.
+
+ PID  TID Session Process Name Token User          Integrity Impersonation Level
+==== ==== ======= ============ =================== ========= ===================
+1952 2000       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+1952 2300       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+3516 4348       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+3516 4656       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+
+[+] Got 4 thread(s).
+[*] Found 1 account(s).
+    [*] NT AUTHORITY\SYSTEM
+[*] Done.
+```
+
+If you want to filter these results with token username, set filter string as `-a` option value as follows:
+
+```
+C:\Dev>.\TokenDump.exe -e -a network -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate process token.
+
+ PID Session Process Name Token User                   Integrity Restricted AppContainer
+==== ======= ============ ============================ ========= ========== ============
+1932       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+3500       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+2904       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+2504       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+7012       0 msdtc.exe    NT AUTHORITY\NETWORK SERVICE System    False      False
+7092       0 sppsvc.exe   NT AUTHORITY\NETWORK SERVICE System    False      False
+1676       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+3584       0 WmiPrvSE.exe NT AUTHORITY\NETWORK SERVICE System    False      False
+1000       0 svchost.exe  NT AUTHORITY\NETWORK SERVICE System    False      False
+
+[+] Got 9 token information.
+[*] Found 7 account(s).
+    [*] NT AUTHORITY\SYSTEM
+    [*] dev22h2\user
+    [*] NT AUTHORITY\LOCAL SERVICE
+    [*] NT AUTHORITY\NETWORK SERVICE
+    [*] Font Driver Host\UMFD-0
+    [*] Font Driver Host\UMFD-1
+    [*] Window Manager\DWM-1
+[*] Done.
+
+C:\Dev>.\TokenDump.exe -e -a network -d -H
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate token handles.
+
+[Token Handle(s) - lsass.exe (PID: 768)]
+
+Handle Session Token User                   Integrity Restricted AppContainer Token Type    Impersonation Level
+====== ======= ============================ ========= ========== ============ ============= ===================
+ 0x914       0 NT AUTHORITY\NETWORK SERVICE System    False      False        Impersonation Impersonation
+
+--snip--
+
+[Token Handle(s) - msdtc.exe (PID: 7012)]
+
+Handle Session Token User                   Integrity Restricted AppContainer Token Type Impersonation Level
+====== ======= ============================ ========= ========== ============ ========== ===================
+ 0x23C       0 NT AUTHORITY\NETWORK SERVICE System    False      False        Primary    Anonymous
+
+[+] Got 27 handle(s).
+[*] Found 8 account(s).
+    [*] NT AUTHORITY\SYSTEM
+    [*] dev22h2\user
+    [*] Font Driver Host\UMFD-1
+    [*] Font Driver Host\UMFD-0
+    [*] NT AUTHORITY\NETWORK SERVICE
+    [*] Window Manager\DWM-1
+    [*] NT AUTHORITY\LOCAL SERVICE
+    [*] NT AUTHORITY\ANONYMOUS LOGON
+[*] Done.
+```
+
+To get verbose information for a specific process, set `-s` flag and target PID as `-p` option value:
+
+```
+C:\Dev>.\TokenDump.exe -s -p 5996
+
+[>] Trying to dump process token information.
+
+[Token Information for StartMenuExperienceHost.exe (PID: 5996)]
+
+ImageFilePath       : C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe
+CommandLine         : "C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe" -ServerName:App.AppXywbrabmsek0gm3tkwpr5kwzbs55tkqay.mca
+Token User          : dev22h2\user (SID: S-1-5-21-3896868301-3921591151-1374190648-1001)
+Token Owner         : dev22h2\user (SID: S-1-5-21-3896868301-3921591151-1374190648-1001)
+Primary Group       : dev22h2\None (SID: S-1-5-21-3896868301-3921591151-1374190648-513)
+Token Type          : Primary
+Impersonation Level : Anonymous
+Token ID            : 0x0000000000063D9A
+Authentication ID   : 0x000000000001DFE5
+Original ID         : 0x00000000000003E7
+Modified ID         : 0x0000000000063D24
+Integrity Level     : Low
+Protection Level    : N/A
+Session ID          : 1
+Elevation Type      : Limited
+Mandatory Policy    : NoWriteUp
+Elevated            : False
+AppContainer        : True
+TokenFlags          : VirtualizeAllowed, IsFiltered, LowBox
+AppContainer Name   : microsoft.windows.startmenuexperiencehost_cw5n1h2txyewy
+AppContainer SID    : S-1-15-2-515815643-2845804217-1874292103-218650560-777617685-4287762684-137415000
+AppContainer Number : 2
+Has Linked Token    : True
+Token Source        : User32
+Token Source ID     : 0x000000000001DE9D
+
+
+    PRIVILEGES INFORMATION
+    ----------------------
+
+    Privilege Name                State
+    ============================= =========================
+    SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+    SeIncreaseWorkingSetPrivilege Disabled
+
+
+    GROUP INFORMATION
+    -----------------
+
+    Group Name                                                    Attributes
+    ============================================================= =============================================
+    dev22h2\None                                                  Mandatory, EnabledByDefault, Enabled
+    Everyone                                                      Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Local account and member of Administrators group UseForDenyOnly
+    BUILTIN\Administrators                                        UseForDenyOnly
+    BUILTIN\Users                                                 Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\INTERACTIVE                                      Mandatory, EnabledByDefault, Enabled
+    CONSOLE LOGON                                                 Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Authenticated Users                              Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\This Organization                                Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Local account                                    Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\LogonSessionId_0_122425                          Mandatory, EnabledByDefault, Enabled, LogonId
+    LOCAL                                                         Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\NTLM Authentication                              Mandatory, EnabledByDefault, Enabled
+    Mandatory Label\Low Mandatory Level                           Integrity, IntegrityEnabled
+
+
+    APPCONTAINER CAPABILITIES
+    -------------------------
+
+    Capability Name                                                            Flags
+    ========================================================================== =======
+    APPLICATION PACKAGE AUTHORITY\Your Internet connection                     Enabled
+    APPLICATION PACKAGE AUTHORITY\Your home or work networks                   Enabled
+    NAMED CAPABILITIES\PackageQuery                                            Enabled
+    NAMED CAPABILITIES\ActivitySystem                                          Enabled
+    NAMED CAPABILITIES\PreviewStore                                            Enabled
+    NAMED CAPABILITIES\CortanaPermissions                                      Enabled
+    NAMED CAPABILITIES\AppointmentsSystem                                      Enabled
+    NAMED CAPABILITIES\TeamEditionExperience                                   Enabled
+    NAMED CAPABILITIES\ShellExperience                                         Enabled
+    NAMED CAPABILITIES\PackageContents                                         Enabled
+    NAMED CAPABILITIES\VisualElementsSystem                                    Enabled
+    NAMED CAPABILITIES\UserAccountInformation                                  Enabled
+    NAMED CAPABILITIES\ActivityData                                            Enabled
+    NAMED CAPABILITIES\CloudStore                                              Enabled
+    NAMED CAPABILITIES\TargetedContent                                         Enabled
+    NAMED CAPABILITIES\StoreAppInstall                                         Enabled
+    NAMED CAPABILITIES\StoreLicenseManagement                                  Enabled
+    NAMED CAPABILITIES\CortanaSettings                                         Enabled
+    NAMED CAPABILITIES\DependencyTarget                                        Enabled
+    NAMED CAPABILITIES\SearchSettings                                          Enabled
+    NAMED CAPABILITIES\CellularData                                            Enabled
+    NAMED CAPABILITIES\WifiData                                                Enabled
+    PACKAGE CAPABILITY\microsoft.windows.startmenuexperiencehost_cw5n1h2txyewy Enabled
+    NAMED CAPABILITIES\AccessoryManager                                        Enabled
+    NAMED CAPABILITIES\UserAccountInformation                                  Enabled
+
+
+    DACL INFORMATION
+    ----------------
+
+    Account Name                                            Access                      Flags Type
+    ======================================================= =========================== ===== =============
+    dev22h2\user                                            GenericAll                  None  AccessAllowed
+    NT AUTHORITY\SYSTEM                                     GenericAll                  None  AccessAllowed
+    NT AUTHORITY\LogonSessionId_0_122425                    GenericExecute, GenericRead None  AccessAllowed
+    microsoft.windows.startmenuexperiencehost_cw5n1h2txyewy GenericAll                  None  AccessAllowed
+
+
+    SECURITY ATTRIBUTES INFORMATION
+    -------------------------------
+
+    [*] WIN://SYSAPPID
+        Flags : None
+        Type  : String
+            Value[0x00] : Microsoft.Windows.StartMenuExperienceHost_10.0.22621.1_neutral_neutral_cw5n1h2txyewy
+            Value[0x01] : App
+            Value[0x02] : Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy
+
+    [*] WIN://PKG
+        Flags : None
+        Type  : UInt64
+            Value[0x00] : 0x0000000200000001
+
+    [*] WIN://PKGHOSTID
+        Flags : None
+        Type  : UInt64
+            Value[0x00] : 0x1000000000000001
+
+    [*] TSA://ProcUnique
+        Flags : NonInheritable, Unique
+        Type  : UInt64
+            Value[0x00] : 0x0000000000000041
+            Value[0x01] : 0x0000000000063D9B
+
+
+
+[Linked Token Information for StartMenuExperienceHost.exe (PID: 5996)]
+
+Token User          : dev22h2\user (SID: S-1-5-21-3896868301-3921591151-1374190648-1001)
+Token Owner         : BUILTIN\Administrators (SID: S-1-5-32-544)
+Primary Group       : dev22h2\None (SID: S-1-5-21-3896868301-3921591151-1374190648-513)
+Token Type          : Impersonation
+Impersonation Level : Identification
+Token ID            : 0x000000000016ECE6
+Authentication ID   : 0x000000000001DF83
+Original ID         : 0x00000000000003E7
+Modified ID         : 0x000000000001DFE4
+Integrity Level     : High
+Protection Level    : N/A
+Session ID          : 1
+Elevation Type      : Full
+Mandatory Policy    : NoWriteUp, NewProcessMin
+Elevated            : True
+AppContainer        : False
+TokenFlags          : NotLow
+Token Source        : User32
+Token Source ID     : 0x000000000001DE9D
+
+
+    PRIVILEGES INFORMATION
+    ----------------------
+
+    Privilege Name                            State
+    ========================================= =========================
+    SeIncreaseQuotaPrivilege                  Disabled
+    SeSecurityPrivilege                       Disabled
+    SeTakeOwnershipPrivilege                  Disabled
+    SeLoadDriverPrivilege                     Disabled
+    SeSystemProfilePrivilege                  Disabled
+    SeSystemtimePrivilege                     Disabled
+    SeProfileSingleProcessPrivilege           Disabled
+    SeIncreaseBasePriorityPrivilege           Disabled
+    SeCreatePagefilePrivilege                 Disabled
+    SeBackupPrivilege                         Disabled
+    SeRestorePrivilege                        Disabled
+    SeShutdownPrivilege                       Disabled
+    SeDebugPrivilege                          Disabled
+    SeSystemEnvironmentPrivilege              Disabled
+    SeChangeNotifyPrivilege                   EnabledByDefault, Enabled
+    SeRemoteShutdownPrivilege                 Disabled
+    SeUndockPrivilege                         Disabled
+    SeManageVolumePrivilege                   Disabled
+    SeImpersonatePrivilege                    EnabledByDefault, Enabled
+    SeCreateGlobalPrivilege                   EnabledByDefault, Enabled
+    SeIncreaseWorkingSetPrivilege             Disabled
+    SeTimeZonePrivilege                       Disabled
+    SeCreateSymbolicLinkPrivilege             Disabled
+    SeDelegateSessionUserImpersonatePrivilege Disabled
+
+
+    GROUP INFORMATION
+    -----------------
+
+    Group Name                                                    Attributes
+    ============================================================= =============================================
+    dev22h2\None                                                  Mandatory, EnabledByDefault, Enabled
+    Everyone                                                      Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Local account and member of Administrators group Mandatory, EnabledByDefault, Enabled
+    BUILTIN\Administrators                                        Mandatory, EnabledByDefault, Enabled, Owner
+    BUILTIN\Users                                                 Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\INTERACTIVE                                      Mandatory, EnabledByDefault, Enabled
+    CONSOLE LOGON                                                 Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Authenticated Users                              Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\This Organization                                Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Local account                                    Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\LogonSessionId_0_122425                          Mandatory, EnabledByDefault, Enabled, LogonId
+    LOCAL                                                         Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\NTLM Authentication                              Mandatory, EnabledByDefault, Enabled
+    Mandatory Label\High Mandatory Level                          Integrity, IntegrityEnabled
+
+
+    DACL INFORMATION
+    ----------------
+
+    Account Name                         Access                      Flags Type
+    ==================================== =========================== ===== =============
+    BUILTIN\Administrators               GenericAll                  None  AccessAllowed
+    NT AUTHORITY\SYSTEM                  GenericAll                  None  AccessAllowed
+    NT AUTHORITY\LogonSessionId_0_122425 GenericExecute, GenericRead None  AccessAllowed
+
+
+    SECURITY ATTRIBUTES INFORMATION
+    -------------------------------
+
+    [*] WIN://SYSAPPID
+        Flags : None
+        Type  : String
+            Value[0x00] : Microsoft.Windows.StartMenuExperienceHost_10.0.22621.1_neutral_neutral_cw5n1h2txyewy
+            Value[0x01] : App
+            Value[0x02] : Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy
+
+    [*] WIN://PKG
+        Flags : None
+        Type  : UInt64
+            Value[0x00] : 0x0000000200000001
+
+    [*] WIN://PKGHOSTID
+        Flags : None
+        Type  : UInt64
+            Value[0x00] : 0x1000000000000001
+
+    [*] TSA://ProcUnique
+        Flags : NonInheritable, Unique
+        Type  : UInt64
+            Value[0x00] : 0x0000000000000041
+            Value[0x01] : 0x0000000000063D9B
+
+
+[*] Done.
+```
+
+If you set handle value in a specific process as `-v` option and the PID as `-p` option as well as `-s` flag, this tool get verbose information for the handle as follows:
+
+```
+C:\Dev>.\TokenDump.exe -s -p 7012 -v 0x23C -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to dump token handle information.
+
+[Token Information for Handle 0x23C of msdtc.exe (PID: 7012)]
+
+Token User          : NT AUTHORITY\NETWORK SERVICE (SID: S-1-5-20)
+Token Owner         : NT AUTHORITY\NETWORK SERVICE (SID: S-1-5-20)
+Primary Group       : NT AUTHORITY\NETWORK SERVICE (SID: S-1-5-20)
+Token Type          : Primary
+Impersonation Level : Anonymous
+Token ID            : 0x000000000007DF17
+Authentication ID   : 0x00000000000003E4
+Original ID         : 0x00000000000003E7
+Modified ID         : 0x000000000007DEE2
+Integrity Level     : System
+Protection Level    : N/A
+Session ID          : 0
+Elevation Type      : Default
+Mandatory Policy    : NoWriteUp, NewProcessMin
+Elevated            : False
+AppContainer        : False
+TokenFlags          : IsFiltered, NotLow
+Has Linked Token    : False
+Token Source        : N/A
+Token Source ID     : N/A
+
+
+    PRIVILEGES INFORMATION
+    ----------------------
+
+    Privilege Name          State
+    ======================= =========================
+    SeChangeNotifyPrivilege EnabledByDefault, Enabled
+    SeCreateGlobalPrivilege EnabledByDefault, Enabled
+
+
+    GROUP INFORMATION
+    -----------------
+
+    Group Name                             Attributes
+    ====================================== ====================================================
+    Mandatory Label\System Mandatory Level Integrity, IntegrityEnabled
+    Everyone                               Mandatory, EnabledByDefault, Enabled
+    BUILTIN\Users                          Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\SERVICE                   Mandatory, EnabledByDefault, Enabled
+    CONSOLE LOGON                          Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Authenticated Users       Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\This Organization         Mandatory, EnabledByDefault, Enabled
+    NT SERVICE\MSDTC                       EnabledByDefault, Enabled, Owner
+    NT AUTHORITY\LogonSessionId_0_515780   Mandatory, EnabledByDefault, Enabled, Owner, LogonId
+    LOCAL                                  Mandatory, EnabledByDefault, Enabled
+
+
+    DACL INFORMATION
+    ----------------
+
+    Account Name        Access      Flags Type
+    =================== =========== ===== =============
+    NT AUTHORITY\SYSTEM GenericAll  None  AccessAllowed
+    OWNER RIGHTS        ReadControl None  AccessAllowed
+    NT SERVICE\MSDTC    GenericAll  None  AccessAllowed
+
+
+    SECURITY ATTRIBUTES INFORMATION
+    -------------------------------
+
+    [*] TSA://ProcUnique
+        Flags : NonInheritable, Unique
+        Type  : UInt64
+            Value[0x00] : 0x0000000000000070
+            Value[0x01] : 0x000000000007DF18
+
+
+[*] Done.
+```
+
+To investigate impersonate token applied to thread, set the thread ID as `-t` option as follows:
+
+```
+C:\Dev>.\TokenDump.exe -e -T -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to enumerate impersonated threads.
+
+ PID  TID Session Process Name Token User          Integrity Impersonation Level
+==== ==== ======= ============ =================== ========= ===================
+1952 2000       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+1952 2300       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+3516 4348       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+3516 4656       0 svchost.exe  NT AUTHORITY\SYSTEM System    Impersonation
+
+[+] Got 4 thread(s).
+[*] Found 1 account(s).
+    [*] NT AUTHORITY\SYSTEM
+[*] Done.
+
+
+C:\Dev>.\TokenDump.exe -s -p 3516 -t 4656 -d
+
+[>] Trying to enable SeDebugPrivilege.
+[+] SeDebugPrivilege is enabled successfully.
+[>] Trying to dump thread token information.
+
+[Token Information for svchost.exe (PID: 3516, TID: 4656)]
+
+Token User          : NT AUTHORITY\SYSTEM (SID: S-1-5-18)
+Token Owner         : NT AUTHORITY\SYSTEM (SID: S-1-5-18)
+Primary Group       : NT AUTHORITY\SYSTEM (SID: S-1-5-18)
+Token Type          : Impersonation
+Impersonation Level : Impersonation
+Token ID            : 0x0000000000038CC4
+Authentication ID   : 0x00000000000003E7
+Original ID         : 0x00000000000003E7
+Modified ID         : 0x000000000002CE61
+Integrity Level     : System
+Protection Level    : N/A
+Session ID          : 0
+Elevation Type      : Default
+Mandatory Policy    : NoWriteUp, NewProcessMin
+Elevated            : True
+AppContainer        : False
+TokenFlags          : IsFiltered, NotLow, EnforceRedirectionTrust
+Has Linked Token    : False
+Token Source        : N/A
+Token Source ID     : N/A
+
+
+    PRIVILEGES INFORMATION
+    ----------------------
+
+    Privilege Name                State
+    ============================= =========================
+    SeAssignPrimaryTokenPrivilege Disabled
+    SeTcbPrivilege                EnabledByDefault, Enabled
+    SeSecurityPrivilege           Disabled
+    SeSystemProfilePrivilege      EnabledByDefault, Enabled
+    SeDebugPrivilege              EnabledByDefault, Enabled
+    SeChangeNotifyPrivilege       EnabledByDefault, Enabled
+    SeImpersonatePrivilege        EnabledByDefault, Enabled
+    SeCreateGlobalPrivilege       EnabledByDefault, Enabled
+
+
+    GROUP INFORMATION
+    -----------------
+
+    Group Name                             Attributes
+    ====================================== ====================================================
+    Mandatory Label\System Mandatory Level Integrity, IntegrityEnabled
+    Everyone                               Mandatory, EnabledByDefault, Enabled
+    BUILTIN\Users                          Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\SERVICE                   Mandatory, EnabledByDefault, Enabled
+    CONSOLE LOGON                          Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\Authenticated Users       Mandatory, EnabledByDefault, Enabled
+    NT AUTHORITY\This Organization         Mandatory, EnabledByDefault, Enabled
+    NT SERVICE\DiagTrack                   EnabledByDefault, Enabled, Owner
+    NT AUTHORITY\LogonSessionId_0_180260   Mandatory, EnabledByDefault, Enabled, Owner, LogonId
+    LOCAL                                  Mandatory, EnabledByDefault, Enabled
+    BUILTIN\Administrators                 EnabledByDefault, Enabled, Owner
+
+
+    DACL INFORMATION
+    ----------------
+
+    Account Name         Access      Flags Type
+    ==================== =========== ===== =============
+    NT AUTHORITY\SYSTEM  GenericAll  None  AccessAllowed
+    OWNER RIGHTS         ReadControl None  AccessAllowed
+    NT SERVICE\DiagTrack GenericAll  None  AccessAllowed
+
+
+    SECURITY ATTRIBUTES INFORMATION
+    -------------------------------
+
+    [*] TSA://ProcUnique
+        Flags : NonInheritable, Unique
+        Type  : UInt64
+            Value[0x00] : 0x0000000000000047
+            Value[0x01] : 0x000000000002C0FA
+
+
+[*] Done.
+```
+
 
 
 ## TrustExec

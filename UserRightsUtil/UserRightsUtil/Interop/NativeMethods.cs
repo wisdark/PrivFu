@@ -17,9 +17,6 @@ namespace UserRightsUtil.Interop
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool ConvertStringSidToSid(string StringSid, out IntPtr pSid);
 
-        [DllImport("advapi32.dll")]
-        public static extern int GetLengthSid(IntPtr pSid);
-
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool IsValidSid(IntPtr pSid);
 
@@ -58,7 +55,7 @@ namespace UserRightsUtil.Interop
             IntPtr PolicyHandle,
             IntPtr pSID,
             out IntPtr UserRights, // LSA_UNICODE_STRING[]
-            out ulong CountOfRights);
+            out uint CountOfRights);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int LsaEnumerateAccountsWithUserRight(
@@ -76,7 +73,7 @@ namespace UserRightsUtil.Interop
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int LsaOpenPolicy(
             IntPtr SystemName, // Win32Struct.LSA_UNICODE_STRING[]
-            ref LSA_OBJECT_ATTRIBUTES ObjectAttributes,
+            in LSA_OBJECT_ATTRIBUTES ObjectAttributes,
             PolicyAccessRights AccessMask,
             out IntPtr PolicyHandle);
 
@@ -89,7 +86,7 @@ namespace UserRightsUtil.Interop
             int CountOfRights);
 
         /*
-         * kenel32.dll
+         * kernel32.dll
          */
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int FormatMessage(
@@ -103,6 +100,9 @@ namespace UserRightsUtil.Interop
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr LocalFree(IntPtr hMem);
+
+        [DllImport("kernel32.dll")]
+        public static extern void SetLastError(int dwErrCode);
 
         /*
          * netapi32.dll
@@ -118,7 +118,7 @@ namespace UserRightsUtil.Interop
             int prefmaxlen,
             out int entriesread,
             out int totalentries,
-            ref int resume_handle);
+            ref IntPtr resume_handle);
 
         [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
         public static extern int NetUserGetLocalGroups(

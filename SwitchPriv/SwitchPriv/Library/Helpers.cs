@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -7,239 +8,258 @@ using SwitchPriv.Interop;
 
 namespace SwitchPriv.Library
 {
+    using NTSTATUS = Int32;
+
     internal class Helpers
     {
-        public static string ConvertIndexToMandatoryLevelSid(int index)
+        public static bool CompareIgnoreCase(string strA, string strB)
         {
-            if (index == (int)Globals.MANDATORY_LEVEL_INDEX.UNTRUSTED_MANDATORY_LEVEL)
-                return Win32Consts.UNTRUSTED_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.LOW_MANDATORY_LEVEL)
-                return Win32Consts.LOW_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_MANDATORY_LEVEL)
-                return Win32Consts.MEDIUM_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.MEDIUM_PLUS_MANDATORY_LEVEL)
-                return Win32Consts.MEDIUM_PLUS_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.HIGH_MANDATORY_LEVEL)
-                return Win32Consts.HIGH_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SYSTEM_MANDATORY_LEVEL)
-                return Win32Consts.SYSTEM_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.PROTECTED_MANDATORY_LEVEL)
-                return Win32Consts.PROTECTED_MANDATORY_LEVEL;
-            else if (index == (int)Globals.MANDATORY_LEVEL_INDEX.SECURE_MANDATORY_LEVEL)
-                return Win32Consts.SECURE_MANDATORY_LEVEL;
-            else
-                return null;
+            return (string.Compare(strA, strB, StringComparison.OrdinalIgnoreCase) == 0);
         }
 
 
-        public static string ConvertStringSidToMandatoryLevelName(string stringSid)
+        public static string ConvertIntegrityLeveSidToAccountName(IntPtr pSid)
         {
-            StringComparison opt = StringComparison.OrdinalIgnoreCase;
+            string integrityLevel = "N/A";
 
-            if (string.Compare(stringSid, Win32Consts.UNTRUSTED_MANDATORY_LEVEL, opt) == 0)
-                return "UNTRUSTED_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.LOW_MANDATORY_LEVEL, opt) == 0)
-                return "LOW_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.MEDIUM_MANDATORY_LEVEL, opt) == 0)
-                return "MEDIUM_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.MEDIUM_PLUS_MANDATORY_LEVEL, opt) == 0)
-                return "MEDIUM_PLUS_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.HIGH_MANDATORY_LEVEL, opt) == 0)
-                return "HIGH_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.SYSTEM_MANDATORY_LEVEL, opt) == 0)
-                return "SYSTEM_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.PROTECTED_MANDATORY_LEVEL, opt) == 0)
-                return "PROTECTED_MANDATORY_LEVEL";
-            else if (string.Compare(stringSid, Win32Consts.SECURE_MANDATORY_LEVEL, opt) == 0)
-                return "SECURE_MANDATORY_LEVEL";
-            else
-                return null;
-        }
-
-
-        public static string GetFullPrivilegeName(string shortenName)
-        {
-            StringComparison opt = StringComparison.OrdinalIgnoreCase;
-
-            if (string.Compare(shortenName, "CreateToken", opt) == 0)
-                return "SeCreateTokenPrivilege";
-            else if (string.Compare(shortenName, "AssignPrimaryToken", opt) == 0)
-                return "SeAssignPrimaryTokenPrivilege";
-            else if (string.Compare(shortenName, "LockMemory", opt) == 0)
-                return "SeLockMemoryPrivilege";
-            else if (string.Compare(shortenName, "IncreaseQuota", opt) == 0)
-                return "SeIncreaseQuotaPrivilege";
-            else if (string.Compare(shortenName, "MachineAccount", opt) == 0)
-                return "SeMachineAccountPrivilege";
-            else if (string.Compare(shortenName, "Tcb", opt) == 0)
-                return "SeTcbPrivilege";
-            else if (string.Compare(shortenName, "Security", opt) == 0)
-                return "SeSecurityPrivilege";
-            else if (string.Compare(shortenName, "TakeOwnership", opt) == 0)
-                return "SeTakeOwnershipPrivilege";
-            else if (string.Compare(shortenName, "LoadDriver", opt) == 0)
-                return "SeLoadDriverPrivilege";
-            else if (string.Compare(shortenName, "SystemProfile", opt) == 0)
-                return "SeSystemProfilePrivilege";
-            else if (string.Compare(shortenName, "Systemtime", opt) == 0)
-                return "SeSystemtimePrivilege";
-            else if (string.Compare(shortenName, "ProfileSingleProcess", opt) == 0)
-                return "SeProfileSingleProcessPrivilege";
-            else if (string.Compare(shortenName, "IncreaseBasePriority", opt) == 0)
-                return "SeIncreaseBasePriorityPrivilege";
-            else if (string.Compare(shortenName, "CreatePagefile", opt) == 0)
-                return "SeCreatePagefilePrivilege";
-            else if (string.Compare(shortenName, "CreatePermanent", opt) == 0)
-                return "SeCreatePermanentPrivilege";
-            else if (string.Compare(shortenName, "Backup", opt) == 0)
-                return "SeBackupPrivilege";
-            else if (string.Compare(shortenName, "Restore", opt) == 0)
-                return "SeRestorePrivilege";
-            else if (string.Compare(shortenName, "Shutdown", opt) == 0)
-                return "SeShutdownPrivilege";
-            else if (string.Compare(shortenName, "Debug", opt) == 0)
-                return "SeDebugPrivilege";
-            else if (string.Compare(shortenName, "Audit", opt) == 0)
-                return "SeAuditPrivilege";
-            else if (string.Compare(shortenName, "SystemEnvironment", opt) == 0)
-                return "SeSystemEnvironmentPrivilege";
-            else if (string.Compare(shortenName, "ChangeNotify", opt) == 0)
-                return "SeChangeNotifyPrivilege";
-            else if (string.Compare(shortenName, "RemoteShutdown", opt) == 0)
-                return "SeRemoteShutdownPrivilege";
-            else if (string.Compare(shortenName, "Undock", opt) == 0)
-                return "SeUndockPrivilege";
-            else if (string.Compare(shortenName, "SyncAgent", opt) == 0)
-                return "SeSyncAgentPrivilege";
-            else if (string.Compare(shortenName, "EnableDelegation", opt) == 0)
-                return "SeEnableDelegationPrivilege";
-            else if (string.Compare(shortenName, "ManageVolume", opt) == 0)
-                return "SeManageVolumePrivilege";
-            else if (string.Compare(shortenName, "Impersonate", opt) == 0)
-                return "SeImpersonatePrivilege";
-            else if (string.Compare(shortenName, "CreateGlobal", opt) == 0)
-                return "SeCreateGlobalPrivilege";
-            else if (string.Compare(shortenName, "TrustedCredManAccess", opt) == 0)
-                return "SeTrustedCredManAccessPrivilege";
-            else if (string.Compare(shortenName, "Relabel", opt) == 0)
-                return "SeRelabelPrivilege";
-            else if (string.Compare(shortenName, "IncreaseWorkingSet", opt) == 0)
-                return "SeIncreaseWorkingSetPrivilege";
-            else if (string.Compare(shortenName, "TimeZone", opt) == 0)
-                return "SeTimeZonePrivilege";
-            else if (string.Compare(shortenName, "CreateSymbolicLink", opt) == 0)
-                return "SeCreateSymbolicLinkPrivilege";
-            else if (string.Compare(shortenName, "DelegateSessionUserImpersonate", opt) == 0)
-                return "SeDelegateSessionUserImpersonatePrivilege";
-            else
-                return null;
-        }
-
-
-        public static IntPtr GetInformationFromToken(
-            IntPtr hToken,
-            TOKEN_INFORMATION_CLASS tokenInfoClass)
-        {
-            bool status;
-            int error;
-            int length = 4;
-            IntPtr buffer;
-
-            do
+            // Verify SID = S-1-16-XXXX
+            if (Marshal.ReadInt64(pSid) == 0x10000000_00000101L)
             {
-                buffer = Marshal.AllocHGlobal(length);
-                ZeroMemory(buffer, length);
-                status = NativeMethods.GetTokenInformation(
-                    hToken, tokenInfoClass, buffer, length, out length);
-                error = Marshal.GetLastWin32Error();
+                int nNameLength = 255;
+                int nDomainNameLength = 255;
+                var nameBuilder = new StringBuilder(nNameLength);
+                var domainNameBuilder = new StringBuilder(nDomainNameLength);
+                var status = NativeMethods.LookupAccountSid(
+                    null,
+                    pSid,
+                    nameBuilder,
+                    ref nNameLength,
+                    domainNameBuilder,
+                    ref nDomainNameLength,
+                    out SID_NAME_USE _);
 
-                if (!status)
-                    Marshal.FreeHGlobal(buffer);
-            } while (!status && (error == Win32Consts.ERROR_INSUFFICIENT_BUFFER || error == Win32Consts.ERROR_BAD_LENGTH));
+                if (status)
+                    integrityLevel = nameBuilder.ToString();
+            }
 
-            if (!status)
-                return IntPtr.Zero;
-
-            return buffer;
+            return integrityLevel;
         }
 
 
-        public static bool GetPrivilegeLuid(
-            string privilegeName,
-            out LUID luid)
+        public static bool GetFullPrivilegeName(
+            string filter,
+            out List<string> candidatePrivs)
         {
-            int error;
-
-            if (!NativeMethods.LookupPrivilegeValue(
-                null,
-                privilegeName,
-                out luid))
+            var validNames = new List<string>
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to lookup {0}.", privilegeName);
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
-                
+                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
+                Win32Consts.SE_AUDIT_NAME,
+                Win32Consts.SE_BACKUP_NAME,
+                Win32Consts.SE_CHANGE_NOTIFY_NAME,
+                Win32Consts.SE_CREATE_GLOBAL_NAME,
+                Win32Consts.SE_CREATE_PAGEFILE_NAME,
+                Win32Consts.SE_CREATE_PERMANENT_NAME,
+                Win32Consts.SE_CREATE_SYMBOLIC_LINK_NAME,
+                Win32Consts.SE_CREATE_TOKEN_NAME,
+                Win32Consts.SE_DEBUG_NAME,
+                Win32Consts.SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME,
+                Win32Consts.SE_ENABLE_DELEGATION_NAME,
+                Win32Consts.SE_IMPERSONATE_NAME,
+                Win32Consts.SE_INCREASE_BASE_PRIORITY_NAME,
+                Win32Consts.SE_INCREASE_QUOTA_NAME,
+                Win32Consts.SE_INCREASE_WORKING_SET_NAME,
+                Win32Consts.SE_LOAD_DRIVER_NAME,
+                Win32Consts.SE_LOCK_MEMORY_NAME,
+                Win32Consts.SE_MACHINE_ACCOUNT_NAME,
+                Win32Consts.SE_MANAGE_VOLUME_NAME,
+                Win32Consts.SE_PROFILE_SINGLE_PROCESS_NAME,
+                Win32Consts.SE_RELABEL_NAME,
+                Win32Consts.SE_REMOTE_SHUTDOWN_NAME,
+                Win32Consts.SE_RESTORE_NAME,
+                Win32Consts.SE_SECURITY_NAME,
+                Win32Consts.SE_SHUTDOWN_NAME,
+                Win32Consts.SE_SYNC_AGENT_NAME,
+                Win32Consts.SE_SYSTEMTIME_NAME,
+                Win32Consts.SE_SYSTEM_ENVIRONMENT_NAME,
+                Win32Consts.SE_SYSTEM_PROFILE_NAME,
+                Win32Consts.SE_TAKE_OWNERSHIP_NAME,
+                Win32Consts.SE_TCB_NAME,
+                Win32Consts.SE_TIME_ZONE_NAME,
+                Win32Consts.SE_TRUSTED_CREDMAN_ACCESS_NAME,
+                Win32Consts.SE_UNDOCK_NAME
+            };
+            candidatePrivs = new List<string>();
+
+            if (string.IsNullOrEmpty(filter))
                 return false;
+
+            foreach (var priv in validNames)
+            {
+                if (priv.IndexOf(filter, StringComparison.OrdinalIgnoreCase) != -1)
+                    candidatePrivs.Add(priv);
             }
 
             return true;
         }
 
 
-        public static string GetPrivilegeName(LUID priv)
+        public static int GetParentProcessId()
         {
-            int error;
-            int cchName = 255;
-            StringBuilder privilegeName = new StringBuilder(255);
+            return GetParentProcessId(Process.GetCurrentProcess().Handle);
+        }
 
-            if (!NativeMethods.LookupPrivilegeName(
-                null,
-                ref priv,
-                privilegeName,
-                ref cchName))
+
+        public static int GetParentProcessId(IntPtr hProcess)
+        {
+            NTSTATUS ntstatus;
+            int ppid = -1;
+            var nInfoSize = Marshal.SizeOf(typeof(PROCESS_BASIC_INFORMATION));
+            var pInfoBuffer = Marshal.AllocHGlobal(nInfoSize);
+
+            ntstatus = NativeMethods.NtQueryInformationProcess(
+                hProcess,
+                PROCESSINFOCLASS.ProcessBasicInformation,
+                pInfoBuffer,
+                (uint)nInfoSize,
+                out uint _);
+
+            if (ntstatus == Win32Consts.STATUS_SUCCESS)
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to lookup privilege name.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
-                
-                return null;
+                var pbi = (PROCESS_BASIC_INFORMATION)Marshal.PtrToStructure(
+                    pInfoBuffer,
+                    typeof(PROCESS_BASIC_INFORMATION));
+                ppid = pbi.InheritedFromUniqueProcessId.ToInt32();
             }
 
-            return privilegeName.ToString();
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return ppid;
+        }
+
+
+        public static string GetTokenIntegrityLevelString(IntPtr hToken)
+        {
+            NTSTATUS ntstatus;
+            bool status;
+            IntPtr pInfoBuffer;
+            string integrityLevel = "N/A";
+            var nInfoLength = (uint)Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL));
+
+            do
+            {
+                pInfoBuffer = Marshal.AllocHGlobal((int)nInfoLength);
+
+                ntstatus = NativeMethods.NtQueryInformationToken(
+                    hToken,
+                    TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
+                    pInfoBuffer,
+                    nInfoLength,
+                    out nInfoLength);
+                status = (ntstatus == Win32Consts.STATUS_SUCCESS);
+
+                if (!status)
+                    Marshal.FreeHGlobal(pInfoBuffer);
+            } while (ntstatus == Win32Consts.STATUS_BUFFER_TOO_SMALL);
+
+            if (status)
+            {
+                var mandatoryLabel = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(
+                    pInfoBuffer,
+                    typeof(TOKEN_MANDATORY_LABEL));
+                integrityLevel = ConvertIntegrityLeveSidToAccountName(mandatoryLabel.Label.Sid);
+
+                Marshal.FreeHGlobal(pInfoBuffer);
+            }
+
+            return integrityLevel;
+        }
+
+
+        public static bool GetTokenPrivileges(
+            IntPtr hToken,
+            out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> privileges)
+        {
+            NTSTATUS ntstatus;
+            IntPtr pInformationBuffer;
+            var nInformationLength = (uint)Marshal.SizeOf(typeof(TOKEN_PRIVILEGES));
+            privileges = new Dictionary<string, SE_PRIVILEGE_ATTRIBUTES>();
+
+            do
+            {
+                pInformationBuffer = Marshal.AllocHGlobal((int)nInformationLength);
+                ntstatus = NativeMethods.NtQueryInformationToken(
+                    hToken,
+                    TOKEN_INFORMATION_CLASS.TokenPrivileges,
+                    pInformationBuffer,
+                    nInformationLength,
+                    out nInformationLength);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    Marshal.FreeHGlobal(pInformationBuffer);
+            } while (ntstatus == Win32Consts.STATUS_BUFFER_TOO_SMALL);
+
+            if (ntstatus == Win32Consts.STATUS_SUCCESS)
+            {
+                var tokenPrivileges = (TOKEN_PRIVILEGES)Marshal.PtrToStructure(
+                    pInformationBuffer,
+                    typeof(TOKEN_PRIVILEGES));
+                var nEntryOffset = Marshal.OffsetOf(typeof(TOKEN_PRIVILEGES), "Privileges").ToInt32();
+                var nUnitSize = Marshal.SizeOf(typeof(LUID_AND_ATTRIBUTES));
+
+                for (var idx = 0; idx < tokenPrivileges.PrivilegeCount; idx++)
+                {
+                    int cchName = 128;
+                    var stringBuilder = new StringBuilder(cchName);
+                    var luid = LUID.FromInt64(Marshal.ReadInt64(pInformationBuffer, nEntryOffset + (nUnitSize * idx)));
+                    var nAttributesOffset = Marshal.OffsetOf(typeof(LUID_AND_ATTRIBUTES), "Attributes").ToInt32();
+                    var attributes = (SE_PRIVILEGE_ATTRIBUTES)Marshal.ReadInt32(
+                        pInformationBuffer,
+                        nEntryOffset + (nUnitSize * idx) + nAttributesOffset);
+
+                    NativeMethods.LookupPrivilegeName(null, in luid, stringBuilder, ref cchName);
+                    privileges.Add(stringBuilder.ToString(), attributes);
+                    stringBuilder.Clear();
+                }
+
+                Marshal.FreeHGlobal(pInformationBuffer);
+            }
+
+            return (ntstatus == Win32Consts.STATUS_SUCCESS);
+        }
+
+
+        public static string GetPrivilegeName(LUID priv)
+        {
+            string privilegeName = null;
+            int cchName = 255;
+            var name = new StringBuilder(cchName);
+
+            if (NativeMethods.LookupPrivilegeName(null, in priv, name, ref cchName))
+                privilegeName = name.ToString();
+
+            return privilegeName;
         }
 
 
         public static string GetWin32ErrorMessage(int code, bool isNtStatus)
         {
             int nReturnedLength;
-            ProcessModuleCollection modules;
-            FormatMessageFlags dwFlags;
             int nSizeMesssage = 256;
             var message = new StringBuilder(nSizeMesssage);
-            IntPtr pNtdll = IntPtr.Zero;
+            var dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            var pNtdll = IntPtr.Zero;
 
             if (isNtStatus)
             {
-                modules = Process.GetCurrentProcess().Modules;
-
-                foreach (ProcessModule mod in modules)
+                foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
                 {
-                    if (string.Compare(
-                        Path.GetFileName(mod.FileName),
-                        "ntdll.dll",
-                        StringComparison.OrdinalIgnoreCase) == 0)
+                    if (CompareIgnoreCase(Path.GetFileName(module.FileName), "ntdll.dll"))
                     {
-                        pNtdll = mod.BaseAddress;
+                        pNtdll = module.BaseAddress;
+                        dwFlags |= FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE;
                         break;
                     }
                 }
-
-                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE |
-                    FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
-            }
-            else
-            {
-                dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
             }
 
             nReturnedLength = NativeMethods.FormatMessage(
@@ -252,114 +272,39 @@ namespace SwitchPriv.Library
                 IntPtr.Zero);
 
             if (nReturnedLength == 0)
-            {
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
-            }
             else
-            {
-                return string.Format(
-                    "[ERROR] Code 0x{0} : {1}",
-                    code.ToString("X8"),
-                    message.ToString().Trim());
-            }
-        }
-
-
-        public static bool IsPrivilegeEnabled(
-            IntPtr hToken,
-            LUID priv,
-            out bool isEnabled)
-        {
-            int error;
-            isEnabled = false;
-
-            if (hToken == IntPtr.Zero)
-                return false;
-
-            var privSet = new PRIVILEGE_SET(1, Win32Consts.PRIVILEGE_SET_ALL_NECESSARY);
-            privSet.Privilege[0].Luid = priv;
-            privSet.Privilege[0].Attributes = (uint)PrivilegeAttributeFlags.SE_PRIVILEGE_ENABLED;
-
-            IntPtr pPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(privSet));
-            Marshal.StructureToPtr(privSet, pPrivileges, true);
-
-            if (!NativeMethods.PrivilegeCheck(
-                hToken,
-                pPrivileges,
-                out isEnabled))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to check the target privilege is enabled.");
-                Console.WriteLine("    |-> {0}\n", GetWin32ErrorMessage(error, false));
-                Marshal.FreeHGlobal(pPrivileges);
-
-                return false;
-            }
-
-            Marshal.FreeHGlobal(pPrivileges);
-
-            return true;
+                return string.Format("[ERROR] Code 0x{0} : {1}", code.ToString("X8"), message.ToString().Trim());
         }
 
 
         public static void ListPrivilegeOptionValues()
         {
-            Console.WriteLine();
-            Console.WriteLine("Available values for --enable, --disable, and --remove options:");
-            Console.WriteLine("    + CreateToken                    : Specifies SeCreateTokenPrivilege.");
-            Console.WriteLine("    + AssignPrimaryToken             : Specifies SeAssignPrimaryTokenPrivilege.");
-            Console.WriteLine("    + LockMemory                     : Specifies SeLockMemoryPrivilege.");
-            Console.WriteLine("    + IncreaseQuota                  : Specifies SeIncreaseQuotaPrivilege.");
-            Console.WriteLine("    + MachineAccount                 : Specifies SeMachineAccountPrivilege.");
-            Console.WriteLine("    + Tcb                            : Specifies SeTcbPrivilege.");
-            Console.WriteLine("    + Security                       : Specifies SeSecurityPrivilege.");
-            Console.WriteLine("    + TakeOwnership                  : Specifies SeTakeOwnershipPrivilege.");
-            Console.WriteLine("    + LoadDriver                     : Specifies SeLoadDriverPrivilege.");
-            Console.WriteLine("    + SystemProfile                  : Specifies SeSystemProfilePrivilege.");
-            Console.WriteLine("    + Systemtime                     : Specifies SeSystemtimePrivilege.");
-            Console.WriteLine("    + ProfileSingle                  : Specifies SeProfileSingleProcessPrivilege.");
-            Console.WriteLine("    + IncreaseBasePriority           : Specifies SeIncreaseBasePriorityPrivilege.");
-            Console.WriteLine("    + CreatePagefile                 : Specifies SeCreatePagefilePrivilege.");
-            Console.WriteLine("    + CreatePermanent                : Specifies SeCreatePermanentPrivilege.");
-            Console.WriteLine("    + Backup                         : Specifies SeBackupPrivilege.");
-            Console.WriteLine("    + Restore                        : Specifies SeRestorePrivilege.");
-            Console.WriteLine("    + Shutdown                       : Specifies SeShutdownPrivilege.");
-            Console.WriteLine("    + Debug                          : Specifies SeDebugPrivilege.");
-            Console.WriteLine("    + Audit                          : Specifies SeAuditPrivilege.");
-            Console.WriteLine("    + SystemEnvironment              : Specifies SeSystemEnvironmentPrivilege.");
-            Console.WriteLine("    + ChangeNotify                   : Specifies SeChangeNotifyPrivilege.");
-            Console.WriteLine("    + RemoteShutdown                 : Specifies SeRemoteShutdownPrivilege.");
-            Console.WriteLine("    + Undock                         : Specifies SeUndockPrivilege.");
-            Console.WriteLine("    + SyncAgent                      : Specifies SeSyncAgentPrivilege.");
-            Console.WriteLine("    + EnableDelegation               : Specifies SeEnableDelegationPrivilege.");
-            Console.WriteLine("    + ManageVolume                   : Specifies SeManageVolumePrivilege.");
-            Console.WriteLine("    + Impersonate                    : Specifies SeImpersonatePrivilege.");
-            Console.WriteLine("    + CreateGlobal                   : Specifies SeCreateGlobalPrivilege.");
-            Console.WriteLine("    + TrustedCredManAccess           : Specifies SeTrustedCredManAccessPrivilege.");
-            Console.WriteLine("    + Relabel                        : Specifies SeRelabelPrivilege.");
-            Console.WriteLine("    + IncreaseWorkingSet             : Specifies SeIncreaseWorkingSetPrivilege.");
-            Console.WriteLine("    + TimeZone                       : Specifies SeTimeZonePrivilege.");
-            Console.WriteLine("    + CreateSymbolicLink             : Specifies SeCreateSymbolicLinkPrivilege.");
-            Console.WriteLine("    + DelegateSessionUserImpersonate : Specifies SeDelegateSessionUserImpersonatePrivilege.");
-            Console.WriteLine("    + All                            : Specifies all token privileges.");
-            Console.WriteLine();
-            Console.WriteLine("Available values for --integrity option:");
-            Console.WriteLine("    + 0 : UNTRUSTED_MANDATORY_LEVEL");
-            Console.WriteLine("    + 1 : LOW_MANDATORY_LEVEL");
-            Console.WriteLine("    + 2 : MEDIUM_MANDATORY_LEVEL");
-            Console.WriteLine("    + 3 : MEDIUM_PLUS_MANDATORY_LEVEL");
-            Console.WriteLine("    + 4 : HIGH_MANDATORY_LEVEL");
-            Console.WriteLine("    + 5 : SYSTEM_MANDATORY_LEVEL");
-            Console.WriteLine("    + 6 : PROTECTED_MANDATORY_LEVEL");
-            Console.WriteLine("    + 7 : SECURE_MANDATORY_LEVEL");
-            Console.WriteLine();
+            var outputBuilder = new StringBuilder();
+
+            outputBuilder.Append("\n");
+            outputBuilder.Append("Available values for --integrity option:\n\n");
+            outputBuilder.Append("    * 0 : UNTRUSTED_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 1 : LOW_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 2 : MEDIUM_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 3 : MEDIUM_PLUS_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 4 : HIGH_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 5 : SYSTEM_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 6 : PROTECTED_MANDATORY_LEVEL\n");
+            outputBuilder.Append("    * 7 : SECURE_MANDATORY_LEVEL\n\n");
+            outputBuilder.Append("Example :\n\n");
+            outputBuilder.Append("    * Down a specific process' integrity level to Low.\n\n");
+            outputBuilder.AppendFormat("        PS C:\\> .\\{0} -p 4142 -s 1\n\n", AppDomain.CurrentDomain.FriendlyName);
+            outputBuilder.Append("Protected and Secure level should not be available, but left for research purpose.\n\n");
+
+            Console.WriteLine(outputBuilder.ToString());
         }
 
 
-        public static void ZeroMemory(IntPtr buffer, int size)
+        public static void ZeroMemory(IntPtr pBuffer, int nSize)
         {
-            var nullBytes = new byte[size];
-            Marshal.Copy(nullBytes, 0, buffer, size);
+            for (var offset = 0; offset < nSize; offset++)
+                Marshal.WriteByte(pBuffer, offset, 0);
         }
     }
 }

@@ -14,14 +14,6 @@ namespace SwitchPriv.Interop
     }
 
     [Flags]
-    internal enum PrivilegeAttributeFlags : uint
-    {
-        SE_PRIVILEGE_ENABLED_BY_DEFAULT = 0x00000001,
-        SE_PRIVILEGE_ENABLED = 0x00000002,
-        SE_PRIVILEGE_USED_FOR_ACCESS = 0x80000000
-    }
-
-    [Flags]
     internal enum ProcessAccessFlags : uint
     {
         PROCESS_ALL_ACCESS = 0x001F0FFF,
@@ -158,33 +150,49 @@ namespace SwitchPriv.Interop
 
     internal enum SECURITY_IMPERSONATION_LEVEL
     {
-        SecurityAnonymous,
-        SecurityIdentification,
-        SecurityImpersonation,
-        SecurityDelegation
+        Anonymous,
+        Identification,
+        Impersonation,
+        Delegation
     }
 
     [Flags]
     internal enum SE_GROUP_ATTRIBUTES : uint
     {
-        SE_GROUP_MANDATORY = 0x00000001,
-        SE_GROUP_ENABLED_BY_DEFAULT = 0x00000002,
-        SE_GROUP_ENABLED = 0x00000004,
-        SE_GROUP_OWNER = 0x00000008,
-        SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010,
-        SE_GROUP_INTEGRITY = 0x00000020,
-        SE_GROUP_INTEGRITY_ENABLED = 0x00000040,
-        SE_GROUP_RESOURCE = 0x20000000,
-        SE_GROUP_LOGON_ID = 0xC0000000
+        Mandatory = 0x00000001,
+        EnabledByDefault = 0x00000002,
+        Enabled = 0x00000004,
+        Owner = 0x00000008,
+        UseForDenyOnly = 0x00000010,
+        Integrity = 0x00000020,
+        IntegrityEnabled = 0x00000040,
+        Resource = 0x20000000,
+        LogonId = 0xC0000000
     }
 
     [Flags]
     internal enum SE_PRIVILEGE_ATTRIBUTES : uint
     {
-        SE_PRIVILEGE_ENABLED_BY_DEFAULT = 0x00000001,
-        SE_PRIVILEGE_ENABLED = 0x00000002,
-        SE_PRIVILEGE_REMOVED = 0x00000004,
-        SE_PRIVILEGE_USED_FOR_ACCESS = 0x80000000,
+        Disabled = 0x00000000,
+        EnabledByDefault = 0x00000001,
+        Enabled = 0x00000002,
+        Removed = 0x00000004,
+        UsedForAccess = 0x80000000
+    }
+
+    internal enum SID_NAME_USE
+    {
+        User = 1,
+        Group,
+        Domain,
+        Alias,
+        WellKnownGroup,
+        DeletedAccount,
+        Invalid,
+        Unknown,
+        Computer,
+        Label,
+        LogonSession
     }
 
     [Flags]

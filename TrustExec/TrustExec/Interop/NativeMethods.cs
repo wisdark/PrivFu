@@ -4,6 +4,8 @@ using System.Text;
 
 namespace TrustExec.Interop
 {
+    using NTSTATUS = Int32;
+
     internal class NativeMethods
     {
         /*
@@ -16,24 +18,7 @@ namespace TrustExec.Interop
             IntPtr NewState, // ref TOKEN_PRIVILEGES
             int BufferLength,
             IntPtr PreviousState, // out TOKEN_PRIVILEGES
-            IntPtr ReturnLength); // out int
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool AllocateAndInitializeSid(
-            ref SID_IDENTIFIER_AUTHORITY pIdentifierAuthority,
-            byte nSubAuthorityCount,
-            int dwSubAuthority0,
-            int dwSubAuthority1,
-            int dwSubAuthority2,
-            int dwSubAuthority3,
-            int dwSubAuthority4,
-            int dwSubAuthority5,
-            int dwSubAuthority6,
-            int dwSubAuthority7,
-            out IntPtr pSid);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool AllocateLocallyUniqueId(out LUID Luid);
+            out int ReturnLength);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool ConvertSidToStringSid(IntPtr pSid, out string strSid);
@@ -52,19 +37,7 @@ namespace TrustExec.Interop
             ProcessCreationFlags dwCreationFlags,
             IntPtr lpEnvironment,
             string lpCurrentDirectory,
-            ref STARTUPINFO lpStartupInfo,
-            out PROCESS_INFORMATION lpProcessInformation);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        public extern static bool CreateProcessWithToken(
-            IntPtr hToken,
-            LogonFlags dwLogonFlags,
-            string lpApplicationName,
-            string lpCommandLine,
-            ProcessCreationFlags dwCreationFlags,
-            IntPtr lpEnvironment,
-            string lpCurrentDirectory,
-            ref STARTUPINFO lpStartupInfo,
+            in STARTUPINFO lpStartupInfo,
             out PROCESS_INFORMATION lpProcessInformation);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -86,9 +59,6 @@ namespace TrustExec.Interop
 
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool IsValidSid(IntPtr pSid);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool LookupAccountName(
@@ -113,7 +83,7 @@ namespace TrustExec.Interop
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool LookupPrivilegeName(
             string lpSystemName,
-            ref LUID lpLuid,
+            in LUID lpLuid,
             StringBuilder lpName,
             ref int cchName);
 
@@ -133,11 +103,6 @@ namespace TrustExec.Interop
         public static extern bool RevertToSelf();
 
         [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool SetThreadToken(
-            IntPtr Thread,
-            IntPtr hToken);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
         public static extern bool SetTokenInformation(
             IntPtr TokenHandle,
             TOKEN_INFORMATION_CLASS TokenInformationClass,
@@ -145,18 +110,12 @@ namespace TrustExec.Interop
             int TokenInformationLength);
 
         [DllImport("advapi32.dll")]
-        public static extern int LsaFreeMemory(IntPtr Buffer);
+        public static extern NTSTATUS LsaFreeMemory(IntPtr Buffer);
 
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
-        public static extern int LsaManageSidNameMapping(
+        public static extern NTSTATUS LsaManageSidNameMapping(
             LSA_SID_NAME_MAPPING_OPERATION_TYPE OperationType,
-            LSA_SID_NAME_MAPPING_OPERATION_ADD_INPUT OperationInput,
-            out IntPtr OperationOutput);
-
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
-        public static extern int LsaManageSidNameMapping(
-            LSA_SID_NAME_MAPPING_OPERATION_TYPE OperationType,
-            LSA_SID_NAME_MAPPING_OPERATION_REMOVE_INPUT OperationInput,
+            IntPtr OperationInput,
             out IntPtr OperationOutput);
 
         /*
@@ -164,19 +123,6 @@ namespace TrustExec.Interop
          */
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool CloseHandle(IntPtr hModule);
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool CreateProcess(
-            string lpApplicationName,
-            string lpCommandLine,
-            IntPtr lpProcessAttributes,
-            IntPtr lpThreadAttributes,
-            bool bInheritHandles,
-            ProcessCreationFlags dwCreationFlags,
-            IntPtr lpEnvironment,
-            string lpCurrentDirectory,
-            ref STARTUPINFO lpStartupInfo,
-            out PROCESS_INFORMATION lpProcessInformation);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int FormatMessage(
@@ -189,14 +135,11 @@ namespace TrustExec.Interop
             IntPtr Arguments);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern int GetCurrentThreadId();
-
-        [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr LocalFree(IntPtr hMem);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(
-            ProcessAccessFlags processAccess,
+            ACCESS_MASK processAccess,
             bool bInheritHandle,
             int processId);
 
@@ -209,13 +152,15 @@ namespace TrustExec.Interop
          * ntdll.dll
          */
         [DllImport("ntdll.dll")]
-        public static extern void RtlGetNtVersionNumbers(
-            ref int MajorVersion,
-            ref int MinorVersion,
-            ref int BuildNumber);
+        public static extern NTSTATUS NtQueryInformationToken(
+            IntPtr TokenHandle,
+            TOKEN_INFORMATION_CLASS TokenInformationClass,
+            IntPtr TokenInformation,
+            uint TokenInformationLength,
+            out uint ReturnLength);
 
         [DllImport("ntdll.dll")]
-        public static extern int ZwCreateToken(
+        public static extern NTSTATUS ZwCreateToken(
             out IntPtr TokenHandle,
             TokenAccessFlags DesiredAccess,
             ref OBJECT_ATTRIBUTES ObjectAttributes,
@@ -229,13 +174,6 @@ namespace TrustExec.Interop
             ref TOKEN_PRIMARY_GROUP TokenPrimaryGroup,
             ref TOKEN_DEFAULT_DACL TokenDefaultDacl,
             ref TOKEN_SOURCE TokenSource);
-
-        [DllImport("ntdll.dll")]
-        public static extern int ZwSetInformationProcess(
-            IntPtr ProcessHandle,
-            PROCESSINFOCLASS ProcessInformationClass,
-            IntPtr ProcessInformation,
-            int ProcessInformationLength);
 
         /*
          * sspicli.dll
