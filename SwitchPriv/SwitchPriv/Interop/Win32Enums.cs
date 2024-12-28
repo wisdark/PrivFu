@@ -3,6 +3,66 @@
 namespace SwitchPriv.Interop
 {
     [Flags]
+    internal enum ACCESS_MASK : uint
+    {
+        NO_ACCESS = 0x00000000,
+
+        // For Process
+        PROCESS_TERMINATE = 0x00000001,
+        PROCESS_CREATE_THREAD = 0x00000002,
+        PROCESS_VM_OPERATION = 0x00000008,
+        PROCESS_VM_READ = 0x00000010,
+        PROCESS_VM_WRITE = 0x00000020,
+        PROCESS_DUP_HANDLE = 0x00000040,
+        PROCESS_CREATE_PROCESS = 0x000000080,
+        PROCESS_SET_QUOTA = 0x00000100,
+        PROCESS_SET_INFORMATION = 0x00000200,
+        PROCESS_QUERY_INFORMATION = 0x00000400,
+        PROCESS_SUSPEND_RESUME = 0x00000800,
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000,
+        PROCESS_ALL_ACCESS = 0x001F0FFF,
+
+        // For Token
+        TOKEN_ASSIGN_PRIMARY = 0x00000001,
+        TOKEN_DUPLICATE = 0x00000002,
+        TOKEN_IMPERSONATE = 0x00000004,
+        TOKEN_QUERY = 0x00000008,
+        TOKEN_QUERY_SOURCE = 0x00000010,
+        TOKEN_ADJUST_PRIVILEGES = 0x00000020,
+        TOKEN_ADJUST_GROUPS = 0x00000040,
+        TOKEN_ADJUST_DEFAULT = 0x00000080,
+        TOKEN_ADJUST_SESSIONID = 0x00000100,
+        TOKEN_ALL_ACCESS = 0x000F01FF,
+        TOKEN_EXECUTE = 0x00020000,
+        TOKEN_READ = 0x00020008,
+        TOKEN_WRITE = 0x000200E0,
+
+        // Standard and Generic Rights
+        DELETE = 0x00010000,
+        READ_CONTROL = 0x00020000,
+        WRITE_DAC = 0x00040000,
+        WRITE_OWNER = 0x00080000,
+        SYNCHRONIZE = 0x00100000,
+        STANDARD_RIGHTS_REQUIRED = 0x000F0000,
+        STANDARD_RIGHTS_READ = 0x00020000,
+        STANDARD_RIGHTS_WRITE = 0x00020000,
+        STANDARD_RIGHTS_EXECUTE = 0x00020000,
+        STANDARD_RIGHTS_ALL = 0x001F0000,
+        ACCESS_SYSTEM_SECURITY = 0x01000000,
+        MAXIMUM_ALLOWED = 0x02000000,
+        GENERIC_ALL = 0x10000000,
+        GENERIC_EXECUTE = 0x20000000,
+        GENERIC_WRITE = 0x40000000,
+        GENERIC_READ = 0x80000000,
+    }
+
+    internal enum BOOLEAN : byte
+    {
+        FALSE = 0,
+        TRUE
+    }
+
+    [Flags]
     internal enum FormatMessageFlags : uint
     {
         FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100,
@@ -13,22 +73,35 @@ namespace SwitchPriv.Interop
         FORMAT_MESSAGE_ARGUMENT_ARRAY = 0x00002000
     }
 
-    [Flags]
-    internal enum ProcessAccessFlags : uint
+    internal enum MANDATORY_LABEL_RID : uint
     {
-        PROCESS_ALL_ACCESS = 0x001F0FFF,
-        Terminate = 0x00000001,
-        PROCESS_CREATE_THREAD = 0x00000002,
-        PROCESS_VM_OPERATION = 0x00000008,
-        PROCESS_VM_READ = 0x00000010,
-        PROCESS_VM_WRITE = 0x00000020,
-        PROCESS_DUP_HANDLE = 0x00000040,
-        PROCESS_CREATE_PROCESS = 0x000000080,
-        PROCESS_SET_QUOTA = 0x00000100,
-        PROCESS_SET_INFORMATION = 0x00000200,
-        PROCESS_QUERY_INFORMATION = 0x00000400,
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000,
-        SYNCHRONIZE = 0x00100000
+        Untrust = 0x0000,
+        Low = 0x1000,
+        Medium = 0x2000,
+        MediumPlus = 0x2100,
+        High = 0x3000,
+        System = 0x4000,
+        Protected = 0x5000
+    }
+
+    [Flags]
+    internal enum OBJECT_ATTRIBUTES_FLAGS : uint
+    {
+        None = 0x00000000,
+        ProtectClose = 0x00000001,
+        Inherit = 0x00000002,
+        AuditObjectClose = 0x00000004,
+        NoEightsUpgrade = 0x00000008,
+        Permanent = 0x00000010,
+        Exclusive = 0x00000020,
+        CaseInsensitive = 0x00000040,
+        OpenIf = 0x00000080,
+        OpenLink = 0x00000100,
+        KernelHandle = 0x00000200,
+        ForceAccessCheck = 0x00000400,
+        IgnoreImpersonatedDevicemap = 0x00000800,
+        DontReparse = 0x00001000,
+        ValieAttributes = 0x00001FF2
     }
 
     internal enum PROCESSINFOCLASS
@@ -180,6 +253,46 @@ namespace SwitchPriv.Interop
         UsedForAccess = 0x80000000
     }
 
+    internal enum SE_PRIVILEGE_ID
+    {
+        SeCreateTokenPrivilege = 2,
+        SeAssignPrimaryTokenPrivilege,
+        SeLockMemoryPrivilege,
+        SeIncreaseQuotaPrivilege,
+        SeMachineAccountPrivilege,
+        SeTcbPrivilege,
+        SeSecurityPrivilege,
+        SeTakeOwnershipPrivilege,
+        SeLoadDriverPrivilege,
+        SeSystemProfilePrivilege,
+        SeSystemtimePrivilege,
+        SeProfileSingleProcessPrivilege,
+        SeIncreaseBasePriorityPrivilege,
+        SeCreatePagefilePrivilege,
+        SeCreatePermanentPrivilege,
+        SeBackupPrivilege,
+        SeRestorePrivilege,
+        SeShutdownPrivilege,
+        SeDebugPrivilege,
+        SeAuditPrivilege,
+        SeSystemEnvironmentPrivilege,
+        SeChangeNotifyPrivilege,
+        SeRemoteShutdownPrivilege,
+        SeUndockPrivilege,
+        SeSyncAgentPrivilege,
+        SeEnableDelegationPrivilege,
+        SeManageVolumePrivilege,
+        SeImpersonatePrivilege,
+        SeCreateGlobalPrivilege,
+        SeTrustedCredManAccessPrivilege,
+        SeRelabelPrivilege,
+        SeIncreaseWorkingSetPrivilege,
+        SeTimeZonePrivilege,
+        SeCreateSymbolicLinkPrivilege,
+        SeDelegateSessionUserImpersonatePrivilege,
+        MaximumCount
+    }
+
     internal enum SID_NAME_USE
     {
         User = 1,
@@ -195,23 +308,69 @@ namespace SwitchPriv.Interop
         LogonSession
     }
 
-    [Flags]
-    internal enum TokenAccessFlags : uint
+    internal enum THREADINFOCLASS
     {
-        TOKEN_ADJUST_DEFAULT = 0x0080,
-        TOKEN_ADJUST_GROUPS = 0x0040,
-        TOKEN_ADJUST_PRIVILEGES = 0x0020,
-        TOKEN_ADJUST_SESSIONID = 0x0100,
-        TOKEN_ASSIGN_PRIMARY = 0x0001,
-        TOKEN_DUPLICATE = 0x0002,
-        TOKEN_EXECUTE = 0x00020000,
-        TOKEN_IMPERSONATE = 0x0004,
-        TOKEN_QUERY = 0x0008,
-        TOKEN_QUERY_SOURCE = 0x0010,
-        TOKEN_READ = 0x00020008,
-        TOKEN_WRITE = 0x000200E0,
-        TOKEN_ALL_ACCESS = 0x000F01FF,
-        MAXIMUM_ALLOWED = 0x02000000
+        ThreadBasicInformation, // q: THREAD_BASIC_INFORMATION
+        ThreadTimes, // q: KERNEL_USER_TIMES
+        ThreadPriority, // s: KPRIORITY (requires SeIncreaseBasePriorityPrivilege)
+        ThreadBasePriority, // s: KPRIORITY
+        ThreadAffinityMask, // s: KAFFINITY
+        ThreadImpersonationToken, // s: HANDLE
+        ThreadDescriptorTableEntry, // q: DESCRIPTOR_TABLE_ENTRY (or WOW64_DESCRIPTOR_TABLE_ENTRY)
+        ThreadEnableAlignmentFaultFixup, // s: BOOLEAN
+        ThreadEventPair,
+        ThreadQuerySetWin32StartAddress, // q: ULONG_PTR
+        ThreadZeroTlsCell, // s: ULONG // TlsIndex // 10
+        ThreadPerformanceCount, // q: LARGE_INTEGER
+        ThreadAmILastThread, // q: ULONG
+        ThreadIdealProcessor, // s: ULONG
+        ThreadPriorityBoost, // qs: ULONG
+        ThreadSetTlsArrayAddress, // s: ULONG_PTR // Obsolete
+        ThreadIsIoPending, // q: ULONG
+        ThreadHideFromDebugger, // q: BOOLEAN; s: void
+        ThreadBreakOnTermination, // qs: ULONG
+        ThreadSwitchLegacyState, // s: void // NtCurrentThread // NPX/FPU
+        ThreadIsTerminated, // q: ULONG // 20
+        ThreadLastSystemCall, // q: THREAD_LAST_SYSCALL_INFORMATION
+        ThreadIoPriority, // qs: IO_PRIORITY_HINT (requires SeIncreaseBasePriorityPrivilege)
+        ThreadCycleTime, // q: THREAD_CYCLE_TIME_INFORMATION
+        ThreadPagePriority, // qs: PAGE_PRIORITY_INFORMATION
+        ThreadActualBasePriority, // s: LONG (requires SeIncreaseBasePriorityPrivilege)
+        ThreadTebInformation, // q: THREAD_TEB_INFORMATION (requires THREAD_GET_CONTEXT + THREAD_SET_CONTEXT)
+        ThreadCSwitchMon, // Obsolete
+        ThreadCSwitchPmu,
+        ThreadWow64Context, // qs: WOW64_CONTEXT, ARM_NT_CONTEXT since 20H1
+        ThreadGroupInformation, // qs: GROUP_AFFINITY // 30
+        ThreadUmsInformation, // q: THREAD_UMS_INFORMATION // Obsolete
+        ThreadCounterProfiling, // q: BOOLEAN; s: THREAD_PROFILING_INFORMATION?
+        ThreadIdealProcessorEx, // qs: PROCESSOR_NUMBER; s: previous PROCESSOR_NUMBER on return
+        ThreadCpuAccountingInformation, // q: BOOLEAN; s: HANDLE (NtOpenSession) // NtCurrentThread // since WIN8
+        ThreadSuspendCount, // q: ULONG // since WINBLUE
+        ThreadHeterogeneousCpuPolicy, // q: KHETERO_CPU_POLICY // since THRESHOLD
+        ThreadContainerId, // q: GUID
+        ThreadNameInformation, // qs: THREAD_NAME_INFORMATION
+        ThreadSelectedCpuSets,
+        ThreadSystemThreadInformation, // q: SYSTEM_THREAD_INFORMATION // 40
+        ThreadActualGroupAffinity, // q: GROUP_AFFINITY // since THRESHOLD2
+        ThreadDynamicCodePolicyInfo, // q: ULONG; s: ULONG (NtCurrentThread)
+        ThreadExplicitCaseSensitivity, // qs: ULONG; s: 0 disables, otherwise enables
+        ThreadWorkOnBehalfTicket, // RTL_WORK_ON_BEHALF_TICKET_EX
+        ThreadSubsystemInformation, // q: SUBSYSTEM_INFORMATION_TYPE // since REDSTONE2
+        ThreadDbgkWerReportActive, // s: ULONG; s: 0 disables, otherwise enables
+        ThreadAttachContainer, // s: HANDLE (job object) // NtCurrentThread
+        ThreadManageWritesToExecutableMemory, // MANAGE_WRITES_TO_EXECUTABLE_MEMORY // since REDSTONE3
+        ThreadPowerThrottlingState, // POWER_THROTTLING_THREAD_STATE // since REDSTONE3 (set), WIN11 22H2 (query)
+        ThreadWorkloadClass, // THREAD_WORKLOAD_CLASS // since REDSTONE5 // 50
+        ThreadCreateStateChange, // since WIN11
+        ThreadApplyStateChange,
+        ThreadStrongerBadHandleChecks, // since 22H1
+        ThreadEffectiveIoPriority, // q: IO_PRIORITY_HINT
+        ThreadEffectivePagePriority, // q: ULONG
+        ThreadUpdateLockOwnership, // since 24H2
+        ThreadSchedulerSharedDataSlot, // SCHEDULER_SHARED_DATA_SLOT_INFORMATION
+        ThreadTebInformationAtomic, // THREAD_TEB_INFORMATION
+        ThreadIndexInformation, // THREAD_INDEX_INFORMATION
+        MaxThreadInfoClass
     }
 
     internal enum TOKEN_INFORMATION_CLASS
@@ -249,7 +408,7 @@ namespace SwitchPriv.Interop
 
     internal enum TOKEN_TYPE
     {
-        TokenPrimary = 1,
-        TokenImpersonation
+        Primary = 1,
+        Impersonation
     }
 }

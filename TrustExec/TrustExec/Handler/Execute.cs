@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Text.RegularExpressions;
 using TrustExec.Library;
 
 namespace TrustExec.Handler
@@ -7,201 +10,116 @@ namespace TrustExec.Handler
     {
         public static void ExecCommand(CommandLineParser options)
         {
-            int domainRid;
-            int techId;
+            int nMethodId;
+            var extraGroupSids = new List<string>();
 
             if (options.GetFlag("help"))
             {
                 options.GetHelp();
-                Console.WriteLine("Available Technique IDs:\n");
-                Console.WriteLine("\t+ 0 - Leverages SeCreateTokenPrivilege. Uses only --shell flag, --full flag and --command option.");
-                Console.WriteLine("\t+ 1 - Leverages virtual logon. This technique creates virtual domain and account as a side effect.");
-
+                Console.WriteLine(GetExtraHelpMessage());
                 return;
             }
 
             try
             {
-                techId = Convert.ToInt32(options.GetValue("technique"));
+                nMethodId = Convert.ToInt32(options.GetValue("method"));
             }
             catch
             {
                 Console.WriteLine("\n[-] Failed to parse technique ID.\n");
-
                 return;
             }
 
-            try
+            if (!string.IsNullOrEmpty(options.GetValue("extra")))
             {
-                domainRid = Convert.ToInt32(options.GetValue("id"));
-            }
-            catch
-            {
-                Console.WriteLine("\n[-] Failed to parse RID for virtual domain.\n");
+                var matches = Regex.Matches(
+                    options.GetValue("extra"),
+                    @"S-1(-\d+){2,}",
+                    RegexOptions.IgnoreCase);
 
-                return;
+                foreach (Match match in matches)
+                    extraGroupSids.Add(match.Value.ToUpper());
+
+                if (extraGroupSids.Count == 0)
+                    Console.WriteLine("[!] No valid SIDs are specified. Ignored.");
             }
 
             Console.WriteLine();
 
-            if (options.GetFlag("shell"))
+            if (options.GetFlag("exec"))
             {
-                if (techId == 0)
+                if (nMethodId == 0)
                 {
-                    if (Modules.RunTrustedInstallerProcess(
-                        null,
-                        options.GetValue("extra"),
-                        options.GetFlag("full")))
-                    {
-                        Console.WriteLine("[>] Exit.");
-                    }
+                    Console.WriteLine("[*] NtCreateToken syscall method is selected.");
+                    Modules.RunTrustedInstallerProcess(
+                        options.GetValue("command"),
+                        options.GetFlag("new-console"),
+                        in extraGroupSids);
                 }
-                else if (techId == 1)
+                else if (nMethodId == 1)
                 {
-                    if (Modules.RunTrustedInstallerProcessWithVirtualLogon(
-                        options.GetValue("domain"),
-                        options.GetValue("username"),
-                        domainRid,
-                        null,
-                        options.GetValue("extra"),
-                        options.GetFlag("full")))
-                    {
-                        Console.WriteLine("[>] Exit.");
-                    }
+                    Console.WriteLine("[*] Virtual logon method is selected.");
+                    Modules.RunTrustedInstallerProcessWithVirtualLogon(
+                        options.GetValue("command"),
+                        options.GetFlag("new-console"),
+                        in extraGroupSids);
+                }
+                else if (nMethodId == 2)
+                {
+                    Console.WriteLine("[*] Service logon method is selected.");
+                    Modules.RunTrustedInstallerProcessWithServiceLogon(
+                        options.GetValue("command"),
+                        options.GetFlag("new-console"),
+                        in extraGroupSids);
+                }
+                else if (nMethodId == 3)
+                {
+                    Console.WriteLine("[*] S4U logon method is selected.");
+                    Modules.RunTrustedInstallerProcessWithS4ULogon(
+                        options.GetValue("command"),
+                        options.GetFlag("new-console"),
+                        in extraGroupSids);
+                }
+                else if (nMethodId == 4)
+                {
+                    Console.WriteLine("[*] TrustedInstaller service method is selected.");
 
-                    Console.WriteLine("[!] Added virtual domain and user are not removed automatically.");
-                    Console.WriteLine("    |-> To remove added virtual user SID   : {0} -m sid -r -d {1} -u {2}",
-                        AppDomain.CurrentDomain.FriendlyName,
-                        options.GetValue("domain"),
-                        options.GetValue("username"));
-                    Console.WriteLine("    |-> To remove added virtual domain SID : {0} -m sid -r -d {1}",
-                        AppDomain.CurrentDomain.FriendlyName,
-                        options.GetValue("domain"));
+                    if (extraGroupSids.Count > 0)
+                        Console.WriteLine("[!] This method does not support extra group SID option. Specified option will be ignored.");
+
+                    Modules.RunTrustedInstallerProcessWithService(options.GetValue("command"), options.GetFlag("new-console"));
                 }
                 else
                 {
                     options.GetHelp();
-                    Console.WriteLine("Available Technique IDs:\n");
-                    Console.WriteLine("\t+ 0 - Leverages SeCreateTokenPrivilege. Uses only --shell flag, --full flag and --command option.");
-                    Console.WriteLine("\t+ 1 - Leverages virtual logon. This technique creates virtual domain and account as a side effect.");
-                    Console.WriteLine("\n[!] Invalid technique ID.");
+                    Console.WriteLine(GetExtraHelpMessage());
+                    Console.WriteLine("[!] Invalid technique ID.");
                 }
             }
-            else if (options.GetValue("command") != null)
+            else if (options.GetFlag("lookup"))
             {
-                if (techId == 0)
-                {
-                    if (Modules.RunTrustedInstallerProcess(
-                        options.GetValue("command"),
-                        options.GetValue("extra"),
-                        options.GetFlag("full")))
-                    {
-                        Console.WriteLine("[>] Exit.");
-                    }
-                }
-                else if (techId == 1)
-                {
-                    if (Modules.RunTrustedInstallerProcessWithVirtualLogon(
-                        options.GetValue("domain"),
-                        options.GetValue("username"),
-                        domainRid,
-                        options.GetValue("command"),
-                        options.GetValue("extra"),
-                        options.GetFlag("full")))
-                    {
-                        Console.WriteLine("[>] Exit.");
-                    }
-
-                    Console.WriteLine("[!] Added virtual domain and user are not removed automatically.");
-                    Console.WriteLine("    |-> To remove added virtual user SID   : {0} -m sid -r -d {1} -u {2}",
-                        AppDomain.CurrentDomain.FriendlyName,
-                        options.GetValue("domain"),
-                        options.GetValue("username"));
-                    Console.WriteLine("    |-> To remove added virtual domain SID : {0} -m sid -r -d {1}",
-                        AppDomain.CurrentDomain.FriendlyName,
-                        options.GetValue("domain"));
-                }
-                else
-                {
-                    options.GetHelp();
-                    Console.WriteLine("Available Technique IDs:\v");
-                    Console.WriteLine("\t+ 0 - Leverages SeCreateTokenPrivilege. Uses only --shell flag, --full flag and --command option.");
-                    Console.WriteLine("\t+ 1 - Leverages virtual logon. This technique creates virtual domain and account as a side effect.");
-                    Console.WriteLine("\n[!] Invalid technique ID.");
-                }
+                Modules.LookupAccountSid(options.GetValue("account"), options.GetValue("sid"));
             }
             else
             {
-                options.GetHelp();
-                Console.WriteLine("Available Technique IDs:\n");
-                Console.WriteLine("\t+ 0 - Leverages SeCreateTokenPrivilege. Uses only --shell flag, --full flag and --command option.");
-                Console.WriteLine("\t+ 1 - Leverages virtual logon. This technique creates virtual domain and account as a side effect.");
+                Console.WriteLine("[-] No valid options. Try -h option.");
             }
 
             Console.WriteLine();
         }
 
-        public static void SidCommand(CommandLineParser options)
+
+        private static string GetExtraHelpMessage()
         {
-            int domainRid;
+            var builder = new StringBuilder();
+            builder.AppendLine("Available Method IDs:\v");
+            builder.AppendLine("\t+ 0 - Leverages NtCreateToken syscall.");
+            builder.AppendLine("\t+ 1 - Leverages virtual logon.");
+            builder.AppendLine("\t+ 2 - Leverages service logon.");
+            builder.AppendLine("\t+ 3 - Leverages S4U logon.");
+            builder.AppendLine("\t+ 4 - Leverages TrustedInstaller service.");
 
-            if (options.GetFlag("help"))
-            {
-                options.GetHelp();
-
-                return;
-            }
-
-            try
-            {
-                domainRid = Convert.ToInt32(options.GetValue("id"));
-            }
-            catch
-            {
-                Console.WriteLine("\n[-] Failed to parse RID for virtual domain.\n");
-                return;
-            }
-
-            Console.WriteLine();
-
-            if (options.GetFlag("lookup"))
-            {
-                Modules.LookupSid(
-                    options.GetValue("domain"),
-                    options.GetValue("username"),
-                    options.GetValue("sid"));
-            }
-            else if (options.GetFlag("remove"))
-            {
-                if (string.IsNullOrEmpty(options.GetValue("domain")))
-                {
-                    Console.WriteLine("\n[-] Domain name is not specified.\n");
-
-                    return;
-                }
-
-                Modules.RemoveVirtualAccount(options.GetValue("domain"), options.GetValue("username"));
-            }
-            else if (options.GetFlag("add"))
-            {
-                if (string.IsNullOrEmpty(options.GetValue("domain")))
-                {
-                    Console.WriteLine("\n[-] Domain name is not specified.\n");
-                    
-                    return;
-                }
-
-                Modules.AddVirtualAccount(
-                    options.GetValue("domain"),
-                    options.GetValue("username"),
-                    domainRid);
-            }
-            else
-            {
-                options.GetHelp();
-            }
-
-            Console.WriteLine();
+            return builder.ToString();
         }
     }
 }

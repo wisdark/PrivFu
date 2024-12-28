@@ -249,15 +249,21 @@ namespace TokenDump.Interop
     [Flags]
     internal enum OBJECT_ATTRIBUTES_FLAGS : uint
     {
-        OBJ_INHERIT = 0x00000002,
-        OBJ_PERMANENT = 0x00000010,
-        OBJ_EXCLUSIVE = 0x00000020,
-        OBJ_CASE_INSENSITIVE = 0x00000040,
-        OBJ_OPENIF = 0x00000080,
-        OBJ_OPENLINK = 0x00000100,
-        OBJ_KERNEL_HANDLE = 0x00000200,
-        OBJ_FORCE_ACCESS_CHECK = 0x00000400,
-        OBJ_VALID_ATTRIBUTES = 0x000007f2
+        None = 0x00000000,
+        ProtectClose = 0x00000001,
+        Inherit = 0x00000002,
+        AuditObjectClose = 0x00000004,
+        NoEightsUpgrade = 0x00000008,
+        Permanent = 0x00000010,
+        Exclusive = 0x00000020,
+        CaseInsensitive = 0x00000040,
+        OpenIf = 0x00000080,
+        OpenLink = 0x00000100,
+        KernelHandle = 0x00000200,
+        ForceAccessCheck = 0x00000400,
+        IgnoreImpersonatedDevicemap = 0x00000800,
+        DontReparse = 0x00001000,
+        ValieAttributes = 0x00001FF2
     }
 
     internal enum OBJECT_INFORMATION_CLASS
@@ -389,26 +395,6 @@ namespace TokenDump.Interop
         MaxProcessInfoClass
     }
 
-    internal enum RPC_C_AUTHN_TYPES : uint
-    {
-        NONE = 0,
-        DCE_PRIVATE = 1,
-        DCE_PUBLIC = 2,
-        DEC_PUBLIC = 4,
-        GSS_NEGOTIATE = 9,
-        WINNT = 10,
-        GSS_SCHANNEL = 14,
-        GSS_KERBEROS = 16,
-        DPA = 17,
-        MSN = 18,
-        KERNEL = 20,
-        DIGEST = 21,
-        NEGO_EXTENDER = 30,
-        PKU2U = 31,
-        MQ = 100,
-        DEFAULT = 0xFFFFFFFF
-    }
-
     [Flags]
     internal enum SE_GROUP_ATTRIBUTES : uint
     {
@@ -431,6 +417,46 @@ namespace TokenDump.Interop
         Enabled = 0x00000002,
         Removed = 0X00000004,
         UsedForAccess = 0x80000000
+    }
+
+    internal enum SE_PRIVILEGE_ID
+    {
+        SeCreateTokenPrivilege = 2,
+        SeAssignPrimaryTokenPrivilege,
+        SeLockMemoryPrivilege,
+        SeIncreaseQuotaPrivilege,
+        SeMachineAccountPrivilege,
+        SeTcbPrivilege,
+        SeSecurityPrivilege,
+        SeTakeOwnershipPrivilege,
+        SeLoadDriverPrivilege,
+        SeSystemProfilePrivilege,
+        SeSystemtimePrivilege,
+        SeProfileSingleProcessPrivilege,
+        SeIncreaseBasePriorityPrivilege,
+        SeCreatePagefilePrivilege,
+        SeCreatePermanentPrivilege,
+        SeBackupPrivilege,
+        SeRestorePrivilege,
+        SeShutdownPrivilege,
+        SeDebugPrivilege,
+        SeAuditPrivilege,
+        SeSystemEnvironmentPrivilege,
+        SeChangeNotifyPrivilege,
+        SeRemoteShutdownPrivilege,
+        SeUndockPrivilege,
+        SeSyncAgentPrivilege,
+        SeEnableDelegationPrivilege,
+        SeManageVolumePrivilege,
+        SeImpersonatePrivilege,
+        SeCreateGlobalPrivilege,
+        SeTrustedCredManAccessPrivilege,
+        SeRelabelPrivilege,
+        SeIncreaseWorkingSetPrivilege,
+        SeTimeZonePrivilege,
+        SeCreateSymbolicLinkPrivilege,
+        SeDelegateSessionUserImpersonatePrivilege,
+        MaximumCount
     }
 
     internal enum SEC_WINNT_AUTH_IDENTITY_FLAGS : uint

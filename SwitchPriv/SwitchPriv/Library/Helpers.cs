@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using SwitchPriv.Interop;
 
@@ -12,102 +11,23 @@ namespace SwitchPriv.Library
 
     internal class Helpers
     {
-        public static bool CompareIgnoreCase(string strA, string strB)
-        {
-            return (string.Compare(strA, strB, StringComparison.OrdinalIgnoreCase) == 0);
-        }
-
-
-        public static string ConvertIntegrityLeveSidToAccountName(IntPtr pSid)
-        {
-            string integrityLevel = "N/A";
-
-            // Verify SID = S-1-16-XXXX
-            if (Marshal.ReadInt64(pSid) == 0x10000000_00000101L)
-            {
-                int nNameLength = 255;
-                int nDomainNameLength = 255;
-                var nameBuilder = new StringBuilder(nNameLength);
-                var domainNameBuilder = new StringBuilder(nDomainNameLength);
-                var status = NativeMethods.LookupAccountSid(
-                    null,
-                    pSid,
-                    nameBuilder,
-                    ref nNameLength,
-                    domainNameBuilder,
-                    ref nDomainNameLength,
-                    out SID_NAME_USE _);
-
-                if (status)
-                    integrityLevel = nameBuilder.ToString();
-            }
-
-            return integrityLevel;
-        }
-
-
         public static bool GetFullPrivilegeName(
             string filter,
-            out List<string> candidatePrivs)
+            out List<SE_PRIVILEGE_ID> candidatePrivs)
         {
-            var validNames = new List<string>
-            {
-                Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
-                Win32Consts.SE_AUDIT_NAME,
-                Win32Consts.SE_BACKUP_NAME,
-                Win32Consts.SE_CHANGE_NOTIFY_NAME,
-                Win32Consts.SE_CREATE_GLOBAL_NAME,
-                Win32Consts.SE_CREATE_PAGEFILE_NAME,
-                Win32Consts.SE_CREATE_PERMANENT_NAME,
-                Win32Consts.SE_CREATE_SYMBOLIC_LINK_NAME,
-                Win32Consts.SE_CREATE_TOKEN_NAME,
-                Win32Consts.SE_DEBUG_NAME,
-                Win32Consts.SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME,
-                Win32Consts.SE_ENABLE_DELEGATION_NAME,
-                Win32Consts.SE_IMPERSONATE_NAME,
-                Win32Consts.SE_INCREASE_BASE_PRIORITY_NAME,
-                Win32Consts.SE_INCREASE_QUOTA_NAME,
-                Win32Consts.SE_INCREASE_WORKING_SET_NAME,
-                Win32Consts.SE_LOAD_DRIVER_NAME,
-                Win32Consts.SE_LOCK_MEMORY_NAME,
-                Win32Consts.SE_MACHINE_ACCOUNT_NAME,
-                Win32Consts.SE_MANAGE_VOLUME_NAME,
-                Win32Consts.SE_PROFILE_SINGLE_PROCESS_NAME,
-                Win32Consts.SE_RELABEL_NAME,
-                Win32Consts.SE_REMOTE_SHUTDOWN_NAME,
-                Win32Consts.SE_RESTORE_NAME,
-                Win32Consts.SE_SECURITY_NAME,
-                Win32Consts.SE_SHUTDOWN_NAME,
-                Win32Consts.SE_SYNC_AGENT_NAME,
-                Win32Consts.SE_SYSTEMTIME_NAME,
-                Win32Consts.SE_SYSTEM_ENVIRONMENT_NAME,
-                Win32Consts.SE_SYSTEM_PROFILE_NAME,
-                Win32Consts.SE_TAKE_OWNERSHIP_NAME,
-                Win32Consts.SE_TCB_NAME,
-                Win32Consts.SE_TIME_ZONE_NAME,
-                Win32Consts.SE_TRUSTED_CREDMAN_ACCESS_NAME,
-                Win32Consts.SE_UNDOCK_NAME
-            };
-            candidatePrivs = new List<string>();
+            candidatePrivs = new List<SE_PRIVILEGE_ID>();
 
             if (string.IsNullOrEmpty(filter))
                 return false;
 
-            foreach (var priv in validNames)
+            for (var priv = SE_PRIVILEGE_ID.SeCreateTokenPrivilege; priv < SE_PRIVILEGE_ID.MaximumCount; priv++)
             {
-                if (priv.IndexOf(filter, StringComparison.OrdinalIgnoreCase) != -1)
+                if (priv.ToString().IndexOf(filter, StringComparison.OrdinalIgnoreCase) != -1)
                     candidatePrivs.Add(priv);
             }
 
             return true;
         }
-
-
-        public static int GetParentProcessId()
-        {
-            return GetParentProcessId(Process.GetCurrentProcess().Handle);
-        }
-
 
         public static int GetParentProcessId(IntPtr hProcess)
         {
@@ -137,134 +57,197 @@ namespace SwitchPriv.Library
         }
 
 
-        public static string GetTokenIntegrityLevelString(IntPtr hToken)
+        public static IntPtr GetProcessToken(int pid, TOKEN_TYPE tokenType)
         {
             NTSTATUS ntstatus;
-            bool status;
-            IntPtr pInfoBuffer;
-            string integrityLevel = "N/A";
-            var nInfoLength = (uint)Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL));
+            var hDupToken = IntPtr.Zero;
+            var clientId = new CLIENT_ID { UniqueProcess = new IntPtr(pid) };
+            var objectAttributes = new OBJECT_ATTRIBUTES
+            {
+                Length = Marshal.SizeOf(typeof(OBJECT_ATTRIBUTES))
+            };
+            var nContextSize = Marshal.SizeOf(typeof(SECURITY_QUALITY_OF_SERVICE));
+            var context = new SECURITY_QUALITY_OF_SERVICE
+            {
+                Length = nContextSize,
+                ImpersonationLevel = SECURITY_IMPERSONATION_LEVEL.Impersonation
+            };
+            var pContextBuffer = Marshal.AllocHGlobal(nContextSize);
+            Marshal.StructureToPtr(context, pContextBuffer, true);
+
+            if (tokenType == TOKEN_TYPE.Impersonation)
+                objectAttributes.SecurityQualityOfService = pContextBuffer;
 
             do
             {
-                pInfoBuffer = Marshal.AllocHGlobal((int)nInfoLength);
+                ntstatus = NativeMethods.NtOpenProcess(
+                    out IntPtr hProcess,
+                    ACCESS_MASK.PROCESS_QUERY_LIMITED_INFORMATION,
+                    in objectAttributes,
+                    in clientId);
 
-                ntstatus = NativeMethods.NtQueryInformationToken(
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    break;
+
+                ntstatus = NativeMethods.NtOpenProcessToken(
+                    hProcess,
+                    ACCESS_MASK.TOKEN_DUPLICATE,
+                    out IntPtr hToken);
+                NativeMethods.NtClose(hProcess);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    break;
+
+                ntstatus = NativeMethods.NtDuplicateToken(
                     hToken,
-                    TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
-                    pInfoBuffer,
-                    nInfoLength,
-                    out nInfoLength);
-                status = (ntstatus == Win32Consts.STATUS_SUCCESS);
+                    ACCESS_MASK.MAXIMUM_ALLOWED,
+                    in objectAttributes,
+                    BOOLEAN.FALSE,
+                    tokenType,
+                    out hDupToken);
+                NativeMethods.NtClose(hToken);
 
-                if (!status)
-                    Marshal.FreeHGlobal(pInfoBuffer);
-            } while (ntstatus == Win32Consts.STATUS_BUFFER_TOO_SMALL);
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    hDupToken = IntPtr.Zero;
+            } while (false);
 
-            if (status)
-            {
-                var mandatoryLabel = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(
-                    pInfoBuffer,
-                    typeof(TOKEN_MANDATORY_LABEL));
-                integrityLevel = ConvertIntegrityLeveSidToAccountName(mandatoryLabel.Label.Sid);
+            ntstatus = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(ntstatus);
+            Marshal.FreeHGlobal(pContextBuffer);
 
-                Marshal.FreeHGlobal(pInfoBuffer);
-            }
-
-            return integrityLevel;
+            return hDupToken;
         }
 
 
-        public static bool GetTokenPrivileges(
-            IntPtr hToken,
-            out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> privileges)
+        public static bool GetSidAccountName(
+            IntPtr pSid,
+            out string stringSid,
+            out string accountName,
+            out SID_NAME_USE sidType)
         {
-            NTSTATUS ntstatus;
-            IntPtr pInformationBuffer;
-            var nInformationLength = (uint)Marshal.SizeOf(typeof(TOKEN_PRIVILEGES));
-            privileges = new Dictionary<string, SE_PRIVILEGE_ATTRIBUTES>();
+            bool bSuccess;
+            long nAuthority = 0;
+            var nSubAuthorityCount = (int)Marshal.ReadByte(pSid, 1);
+            var stringSidBuilder = new StringBuilder("S-");
+            var nameBuilder = new StringBuilder(255);
+            var domainBuilder = new StringBuilder(255);
+            int nNameLength = 255;
+            int nDomainLength = 255;
+            accountName = null;
 
-            do
+            for (int idx = 0; idx < 6; idx++)
             {
-                pInformationBuffer = Marshal.AllocHGlobal((int)nInformationLength);
-                ntstatus = NativeMethods.NtQueryInformationToken(
-                    hToken,
-                    TOKEN_INFORMATION_CLASS.TokenPrivileges,
-                    pInformationBuffer,
-                    nInformationLength,
-                    out nInformationLength);
+                nAuthority <<= 8;
+                nAuthority |= (long)Marshal.ReadByte(pSid, 2 + idx);
+            }
 
-                if (ntstatus != Win32Consts.STATUS_SUCCESS)
-                    Marshal.FreeHGlobal(pInformationBuffer);
-            } while (ntstatus == Win32Consts.STATUS_BUFFER_TOO_SMALL);
+            stringSidBuilder.AppendFormat("{0}-{1}", Marshal.ReadByte(pSid), nAuthority);
+
+            for (int idx = 0; idx < nSubAuthorityCount; idx++)
+                stringSidBuilder.AppendFormat("-{0}", (uint)Marshal.ReadInt32(pSid, 8 + (idx * 4)));
+
+            stringSid = stringSidBuilder.ToString();
+            bSuccess = NativeMethods.LookupAccountSid(
+                null,
+                pSid,
+                nameBuilder,
+                ref nNameLength,
+                domainBuilder,
+                ref nDomainLength,
+                out sidType);
+
+            if (bSuccess)
+            {
+                if ((nNameLength > 0) && (nDomainLength > 0))
+                    accountName = string.Format(@"{0}\{1}", domainBuilder.ToString(), nameBuilder.ToString());
+                else if (nNameLength > 0)
+                    accountName = nameBuilder.ToString();
+                else if (nDomainLength > 0)
+                    accountName = domainBuilder.ToString();
+            }
+
+            return bSuccess;
+        }
+
+
+        public static bool GetTokenIntegrityLevel(
+            IntPtr hToken,
+            out string stringSid,
+            out string labelName,
+            out SID_NAME_USE sidType)
+        {
+            var nInfoLength = 0x400u;
+            var pInfoBuffer = Marshal.AllocHGlobal((int)nInfoLength);
+            NTSTATUS ntstatus = NativeMethods.NtQueryInformationToken(
+                hToken,
+                TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
+                pInfoBuffer,
+                nInfoLength,
+                out uint _);
+            stringSid = null;
+            labelName = null;
+            sidType = SID_NAME_USE.Unknown;
 
             if (ntstatus == Win32Consts.STATUS_SUCCESS)
             {
-                var tokenPrivileges = (TOKEN_PRIVILEGES)Marshal.PtrToStructure(
-                    pInformationBuffer,
-                    typeof(TOKEN_PRIVILEGES));
-                var nEntryOffset = Marshal.OffsetOf(typeof(TOKEN_PRIVILEGES), "Privileges").ToInt32();
-                var nUnitSize = Marshal.SizeOf(typeof(LUID_AND_ATTRIBUTES));
-
-                for (var idx = 0; idx < tokenPrivileges.PrivilegeCount; idx++)
-                {
-                    int cchName = 128;
-                    var stringBuilder = new StringBuilder(cchName);
-                    var luid = LUID.FromInt64(Marshal.ReadInt64(pInformationBuffer, nEntryOffset + (nUnitSize * idx)));
-                    var nAttributesOffset = Marshal.OffsetOf(typeof(LUID_AND_ATTRIBUTES), "Attributes").ToInt32();
-                    var attributes = (SE_PRIVILEGE_ATTRIBUTES)Marshal.ReadInt32(
-                        pInformationBuffer,
-                        nEntryOffset + (nUnitSize * idx) + nAttributesOffset);
-
-                    NativeMethods.LookupPrivilegeName(null, in luid, stringBuilder, ref cchName);
-                    privileges.Add(stringBuilder.ToString(), attributes);
-                    stringBuilder.Clear();
-                }
-
-                Marshal.FreeHGlobal(pInformationBuffer);
+                var info = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(
+                    pInfoBuffer,
+                    typeof(TOKEN_MANDATORY_LABEL));
+                GetSidAccountName(info.Label.Sid, out stringSid, out labelName, out sidType);
             }
+
+            Marshal.FreeHGlobal(pInfoBuffer);
 
             return (ntstatus == Win32Consts.STATUS_SUCCESS);
         }
 
 
-        public static string GetPrivilegeName(LUID priv)
+        public static bool GetTokenPrivileges(
+            IntPtr hToken,
+            out Dictionary<SE_PRIVILEGE_ID, SE_PRIVILEGE_ATTRIBUTES> privileges)
         {
-            string privilegeName = null;
-            int cchName = 255;
-            var name = new StringBuilder(cchName);
+            int nDosErrorCode;
+            var nOffset = Marshal.OffsetOf(typeof(TOKEN_PRIVILEGES), "Privileges").ToInt32();
+            var nUnitSize = Marshal.SizeOf(typeof(LUID_AND_ATTRIBUTES));
+            var nInfoLength = (uint)(nOffset + (nUnitSize * 36));
+            var pInfoBuffer = Marshal.AllocHGlobal((int)nInfoLength);
+            NTSTATUS ntstatus = NativeMethods.NtQueryInformationToken(
+                hToken,
+                TOKEN_INFORMATION_CLASS.TokenPrivileges,
+                pInfoBuffer,
+                nInfoLength,
+                out uint _);
+            privileges = new Dictionary<SE_PRIVILEGE_ID, SE_PRIVILEGE_ATTRIBUTES>();
 
-            if (NativeMethods.LookupPrivilegeName(null, in priv, name, ref cchName))
-                privilegeName = name.ToString();
-
-            return privilegeName;
-        }
-
-
-        public static string GetWin32ErrorMessage(int code, bool isNtStatus)
-        {
-            int nReturnedLength;
-            int nSizeMesssage = 256;
-            var message = new StringBuilder(nSizeMesssage);
-            var dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
-            var pNtdll = IntPtr.Zero;
-
-            if (isNtStatus)
+            if (ntstatus == Win32Consts.STATUS_SUCCESS)
             {
-                foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
+                int nPrivilegeCount = Marshal.ReadInt32(pInfoBuffer);
+
+                for (var idx = 0; idx < nPrivilegeCount; idx++)
                 {
-                    if (CompareIgnoreCase(Path.GetFileName(module.FileName), "ntdll.dll"))
-                    {
-                        pNtdll = module.BaseAddress;
-                        dwFlags |= FormatMessageFlags.FORMAT_MESSAGE_FROM_HMODULE;
-                        break;
-                    }
+                    privileges.Add(
+                        (SE_PRIVILEGE_ID)Marshal.ReadInt32(pInfoBuffer, nOffset),
+                        (SE_PRIVILEGE_ATTRIBUTES)Marshal.ReadInt32(pInfoBuffer, nOffset + 8));
+                    nOffset += nUnitSize;
                 }
             }
 
-            nReturnedLength = NativeMethods.FormatMessage(
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return (ntstatus == Win32Consts.STATUS_SUCCESS);
+        }
+
+
+        public static string GetWin32ErrorMessage(int code)
+        {
+            int nSizeMesssage = 256;
+            var message = new StringBuilder(nSizeMesssage);
+            var dwFlags = FormatMessageFlags.FORMAT_MESSAGE_FROM_SYSTEM;
+            int nReturnedLength = NativeMethods.FormatMessage(
                 dwFlags,
-                pNtdll,
+                IntPtr.Zero,
                 code,
                 0,
                 message,
@@ -275,6 +258,80 @@ namespace SwitchPriv.Library
                 return string.Format("[ERROR] Code 0x{0}", code.ToString("X8"));
             else
                 return string.Format("[ERROR] Code 0x{0} : {1}", code.ToString("X8"), message.ToString().Trim());
+        }
+
+
+        public static bool ImpersonateThreadToken(IntPtr hThread, IntPtr hToken)
+        {
+            NTSTATUS ntstatus;
+            int nDosErrorCode;
+            IntPtr pInfoBuffer = Marshal.AllocHGlobal(IntPtr.Size);
+            var bSuccess = false;
+            Marshal.WriteIntPtr(pInfoBuffer, IntPtr.Zero);
+
+            do
+            {
+                SECURITY_IMPERSONATION_LEVEL originalLevel;
+                SECURITY_IMPERSONATION_LEVEL grantedLevel;
+                ntstatus = NativeMethods.NtQueryInformationToken(
+                    hToken,
+                    TOKEN_INFORMATION_CLASS.TokenImpersonationLevel,
+                    pInfoBuffer,
+                    4u,
+                    out uint _);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    break;
+                else
+                    originalLevel = (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(pInfoBuffer);
+
+                Marshal.WriteIntPtr(pInfoBuffer, hToken);
+                ntstatus = NativeMethods.NtSetInformationThread(
+                    hThread,
+                    THREADINFOCLASS.ThreadImpersonationToken,
+                    pInfoBuffer,
+                    (uint)IntPtr.Size);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    break;
+
+                NativeMethods.NtQueryInformationToken(
+                    WindowsIdentity.GetCurrent().Token,
+                    TOKEN_INFORMATION_CLASS.TokenImpersonationLevel,
+                    pInfoBuffer,
+                    4u,
+                    out uint _);
+                grantedLevel = (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(pInfoBuffer);
+                bSuccess = (grantedLevel == originalLevel);
+
+                if (bSuccess)
+                    ntstatus = Win32Consts.STATUS_PRIVILEGE_NOT_HELD;
+            } while (false);
+
+            Marshal.FreeHGlobal(pInfoBuffer);
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError((int)ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return bSuccess;
+        }
+
+
+        public static bool RevertThreadToken(IntPtr hThread)
+        {
+            int nDosErrorCode;
+            NTSTATUS ntstatus;
+            var pInfoBuffer = Marshal.AllocHGlobal(IntPtr.Size);
+            Marshal.WriteIntPtr(pInfoBuffer, IntPtr.Zero);
+            ntstatus = NativeMethods.NtSetInformationThread(
+                hThread,
+                THREADINFOCLASS.ThreadImpersonationToken,
+                pInfoBuffer,
+                (uint)IntPtr.Size);
+            Marshal.FreeHGlobal(pInfoBuffer);
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return (ntstatus == Win32Consts.STATUS_SUCCESS);
         }
 
 
@@ -291,20 +348,12 @@ namespace SwitchPriv.Library
             outputBuilder.Append("    * 4 : HIGH_MANDATORY_LEVEL\n");
             outputBuilder.Append("    * 5 : SYSTEM_MANDATORY_LEVEL\n");
             outputBuilder.Append("    * 6 : PROTECTED_MANDATORY_LEVEL\n");
-            outputBuilder.Append("    * 7 : SECURE_MANDATORY_LEVEL\n\n");
             outputBuilder.Append("Example :\n\n");
             outputBuilder.Append("    * Down a specific process' integrity level to Low.\n\n");
             outputBuilder.AppendFormat("        PS C:\\> .\\{0} -p 4142 -s 1\n\n", AppDomain.CurrentDomain.FriendlyName);
             outputBuilder.Append("Protected and Secure level should not be available, but left for research purpose.\n\n");
 
             Console.WriteLine(outputBuilder.ToString());
-        }
-
-
-        public static void ZeroMemory(IntPtr pBuffer, int nSize)
-        {
-            for (var offset = 0; offset < nSize; offset++)
-                Marshal.WriteByte(pBuffer, offset, 0);
         }
     }
 }

@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace SwitchPriv.Interop
@@ -13,38 +11,6 @@ namespace SwitchPriv.Interop
         /*
          * advapi32.dll
          */
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool AdjustTokenPrivileges(
-            IntPtr TokenHandle,
-            bool DisableAllPrivileges,
-            IntPtr /* in TOKEN_PRIVILEGES */ NewState,
-            int BufferLength,
-            IntPtr /* out TOKEN_PRIVILEGES */ PreviousState,
-            out int ReturnLength);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool ConvertSidToStringSid(IntPtr pSid, out string strSid);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool ConvertStringSidToSid(
-            string StringSid,
-            out IntPtr pSid);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public extern static bool DuplicateTokenEx(
-            IntPtr hExistingToken,
-            TokenAccessFlags dwDesiredAccess,
-            IntPtr lpTokenAttributes,
-            SECURITY_IMPERSONATION_LEVEL ImpersonationLevel,
-            TOKEN_TYPE TokenType,
-            out IntPtr phNewToken);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern int GetLengthSid(IntPtr pSid);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
-
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool LookupAccountSid(
             string strSystemName,
@@ -55,34 +21,9 @@ namespace SwitchPriv.Interop
             ref int cchReferencedDomainName,
             out SID_NAME_USE peUse);
 
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool LookupPrivilegeName(
-            string lpSystemName,
-            in LUID lpLuid,
-            StringBuilder lpName,
-            ref int cchName);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        public static extern bool LookupPrivilegeValue(
-            string lpSystemName,
-            string lpName,
-            out LUID lpLuid);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool OpenProcessToken(
-            IntPtr ProcessHandle,
-            TokenAccessFlags DesiredAccess,
-            out IntPtr TokenHandle);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool RevertToSelf();
-
         /*
          * kernel32.dll
          */
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hObject);
-
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int FormatMessage(
             FormatMessageFlags dwFlags,
@@ -93,17 +34,42 @@ namespace SwitchPriv.Interop
             int nSize,
             IntPtr Arguments);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr OpenProcess(
-            ProcessAccessFlags processAccess,
-            bool bInheritHandle,
-            int processId);
-
         /*
          * ntdll.dll
          */
         [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtAdjustPrivilegesToken(
+            IntPtr TokenHandle,
+            BOOLEAN DisableAllPrivileges,
+            IntPtr /* PTOKEN_PRIVILEGES */ NewState,
+            uint BufferLength,
+            IntPtr /* out PTOKEN_PRIVILEGES */ PreviousState, // Optional
+            out uint ReturnLength);
+
+        [DllImport("ntdll.dll")]
         public static extern NTSTATUS NtClose(IntPtr Handle);
+
+        [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtDuplicateToken(
+            IntPtr ExistingTokenHandle,
+            ACCESS_MASK DesiredAccess,
+            in OBJECT_ATTRIBUTES ObjectAttributes,
+            BOOLEAN EffectiveOnly,
+            TOKEN_TYPE TokenType,
+            out IntPtr NewTokenHandle);
+
+        [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtOpenProcess(
+            out IntPtr ProcessHandle,
+            ACCESS_MASK DesiredAccess,
+            in OBJECT_ATTRIBUTES ObjectAttributes,
+            in CLIENT_ID ClientId);
+
+        [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtOpenProcessToken(
+            IntPtr ProcessHandle,
+            ACCESS_MASK DesiredAccess,
+            out IntPtr TokenHandle);
 
         [DllImport("ntdll.dll", SetLastError = true)]
         public static extern int NtQueryInformationProcess(
@@ -122,10 +88,23 @@ namespace SwitchPriv.Interop
             out uint ReturnLength);
 
         [DllImport("ntdll.dll")]
+        public static extern NTSTATUS NtSetInformationThread(
+            IntPtr ThreadHandle,
+            THREADINFOCLASS ThreadInformationClass,
+            IntPtr ThreadInformation,
+            uint ThreadInformationLength);
+
+        [DllImport("ntdll.dll")]
         public static extern NTSTATUS NtSetInformationToken(
             IntPtr TokenHandle,
             TOKEN_INFORMATION_CLASS TokenInformationClass,
             IntPtr TokenInformation,
             uint TokenInformationLength);
+
+        [DllImport("ntdll.dll")]
+        public static extern uint RtlNtStatusToDosError(NTSTATUS Status);
+
+        [DllImport("ntdll.dll", SetLastError = true)]
+        public static extern void RtlSetLastWin32Error(int dwErrCode);
     }
 }

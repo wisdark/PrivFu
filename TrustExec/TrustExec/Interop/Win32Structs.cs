@@ -4,6 +4,57 @@ using System.Text;
 
 namespace TrustExec.Interop
 {
+    using SIZE_T = UIntPtr;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ACCESS_ALLOWED_ACE
+    {
+        public ACE_HEADER Header;
+        public ACCESS_MASK Mask;
+        public int SidStart;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ACE_HEADER
+    {
+        public ACE_TYPE AceType;
+        public ACE_FLAGS AceFlags;
+        public short AceSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ACL
+    {
+        public ACL_REVISION AclRevision;
+        public byte Sbz1;
+        public short AclSize;
+        public short AceCount;
+        public short Sbz2;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CLIENT_ID
+    {
+        public IntPtr UniqueProcess;
+        public IntPtr UniqueThread;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct ENUM_SERVICE_STATUS_PROCESSW
+    {
+        public string lpServiceName;
+        public string lpDisplayName;
+        public SERVICE_STATUS_PROCESS ServiceStatusProcess;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct ENUM_SERVICE_STATUSW
+    {
+        public string lpServiceName;
+        public string lpDisplayName;
+        public SERVICE_STATUS ServiceStatus;
+    }
+
     [StructLayout(LayoutKind.Explicit, Size = 8)]
     internal struct LARGE_INTEGER
     {
@@ -60,10 +111,62 @@ namespace TrustExec.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LSA_STRING : IDisposable
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        private IntPtr buffer;
+
+        public LSA_STRING(string s)
+        {
+            Length = (ushort)s.Length;
+            MaximumLength = (ushort)Length;
+            buffer = Marshal.StringToHGlobalAnsi(s);
+        }
+
+        public void Dispose()
+        {
+            Marshal.FreeHGlobal(buffer);
+            buffer = IntPtr.Zero;
+        }
+
+        public void SetBuffer(IntPtr _buffer)
+        {
+            buffer = _buffer;
+        }
+
+        public override string ToString()
+        {
+            if ((Length == 0) || (buffer == IntPtr.Zero))
+                return null;
+            else
+                return Marshal.PtrToStringAnsi(buffer, Length);
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 8, Pack = 4)]
     internal struct LUID
     {
+        [FieldOffset(0)]
         public int LowPart;
+        [FieldOffset(4)]
         public int HighPart;
+        [FieldOffset(0)]
+        public long QuadPart;
+
+        public LUID(int _low, int _high)
+        {
+            QuadPart = 0L;
+            LowPart = _low;
+            HighPart = _high;
+        }
+
+        public LUID(long _quad)
+        {
+            LowPart = 0;
+            HighPart = 0;
+            QuadPart = _quad;
+        }
 
         public long ToInt64()
         {
@@ -87,17 +190,107 @@ namespace TrustExec.Interop
         public uint Attributes;
     }
 
+    internal class MSV1_0_S4U_LOGON : IDisposable
+    {
+        public IntPtr Buffer { get; } = IntPtr.Zero;
+        public int Length { get; } = 0;
+
+        internal struct MSV1_0_S4U_LOGON_INNER
+        {
+            public MSV1_0_LOGON_SUBMIT_TYPE MessageType;
+            public uint Flags;
+            public UNICODE_STRING UserPrincipalName;
+            public UNICODE_STRING DomainName;
+        }
+
+        public MSV1_0_S4U_LOGON(MSV1_0_LOGON_SUBMIT_TYPE type, uint flags, string upn, string domain)
+        {
+            int innerStructSize = Marshal.SizeOf(typeof(MSV1_0_S4U_LOGON_INNER));
+            var pUpnBuffer = IntPtr.Zero;
+            var pDomainBuffer = IntPtr.Zero;
+            var innerStruct = new MSV1_0_S4U_LOGON_INNER
+            {
+                MessageType = type,
+                Flags = flags
+            };
+            Length = innerStructSize;
+
+            if (string.IsNullOrEmpty(upn))
+            {
+                innerStruct.UserPrincipalName.Length = 0;
+                innerStruct.UserPrincipalName.MaximumLength = 0;
+            }
+            else
+            {
+                innerStruct.UserPrincipalName.Length = (ushort)(upn.Length * 2);
+                innerStruct.UserPrincipalName.MaximumLength = (ushort)((upn.Length * 2) + 2);
+                Length += innerStruct.UserPrincipalName.MaximumLength;
+            }
+
+            if (string.IsNullOrEmpty(domain))
+            {
+                innerStruct.DomainName.Length = 0;
+                innerStruct.DomainName.MaximumLength = 0;
+            }
+            else
+            {
+                innerStruct.DomainName.Length = (ushort)(domain.Length * 2);
+                innerStruct.DomainName.MaximumLength = (ushort)((domain.Length * 2) + 2);
+                Length += innerStruct.DomainName.MaximumLength;
+            }
+
+            Buffer = Marshal.AllocHGlobal(Length);
+
+            for (var offset = 0; offset < Length; offset++)
+                Marshal.WriteByte(Buffer, offset, 0);
+
+            if (!string.IsNullOrEmpty(upn))
+            {
+                if (Environment.Is64BitProcess)
+                    pUpnBuffer = new IntPtr(Buffer.ToInt64() + innerStructSize);
+                else
+                    pUpnBuffer = new IntPtr(Buffer.ToInt32() + innerStructSize);
+
+                innerStruct.UserPrincipalName.SetBuffer(pUpnBuffer);
+            }
+
+            if (!string.IsNullOrEmpty(domain))
+            {
+                if (Environment.Is64BitProcess)
+                    pDomainBuffer = new IntPtr(Buffer.ToInt64() + innerStructSize + innerStruct.UserPrincipalName.MaximumLength);
+                else
+                    pDomainBuffer = new IntPtr(Buffer.ToInt32() + innerStructSize + innerStruct.UserPrincipalName.MaximumLength);
+
+                innerStruct.DomainName.SetBuffer(pDomainBuffer);
+            }
+
+            Marshal.StructureToPtr(innerStruct, Buffer, true);
+
+            if (!string.IsNullOrEmpty(upn))
+                Marshal.Copy(Encoding.Unicode.GetBytes(upn), 0, pUpnBuffer, upn.Length * 2);
+
+            if (!string.IsNullOrEmpty(domain))
+                Marshal.Copy(Encoding.Unicode.GetBytes(domain), 0, pDomainBuffer, domain.Length * 2);
+        }
+
+        public void Dispose()
+        {
+            if (Buffer != IntPtr.Zero)
+                Marshal.FreeHGlobal(Buffer);
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct OBJECT_ATTRIBUTES : IDisposable
     {
         public int Length;
         public IntPtr RootDirectory;
         private IntPtr objectName;
-        public uint Attributes;
+        public OBJECT_ATTRIBUTES_FLAGS Attributes;
         public IntPtr SecurityDescriptor;
         public IntPtr SecurityQualityOfService;
 
-        public OBJECT_ATTRIBUTES(string name, uint attrs)
+        public OBJECT_ATTRIBUTES(string name, OBJECT_ATTRIBUTES_FLAGS attrs)
         {
             Length = 0;
             RootDirectory = IntPtr.Zero;
@@ -147,26 +340,65 @@ namespace TrustExec.Interop
         public int dwThreadId;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct QUERY_SERVICE_CONFIGW
+    {
+        public SERVICE_TYPE dwServiceType;
+        public START_TYPE dwStartType;
+        public ERROR_CONTROL dwErrorControl;
+        public string lpBinaryPathName;
+        public string lpLoadOrderGroup;
+        public int dwTagId;
+        public string lpDependencies;
+        public string lpServiceStartName;
+        public string lpDisplayName;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct QUOTA_LIMITS
+    {
+        public SIZE_T PagedPoolLimit;
+        public SIZE_T NonPagedPoolLimit;
+        public SIZE_T MinimumWorkingSetSize;
+        public SIZE_T MaximumWorkingSetSize;
+        public SIZE_T PagefileLimit;
+        public LARGE_INTEGER TimeLimit;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct SECURITY_QUALITY_OF_SERVICE
     {
         public int Length;
         public SECURITY_IMPERSONATION_LEVEL ImpersonationLevel;
-        public byte ContextTrackingMode;
-        public byte EffectiveOnly;
+        public SECURITY_CONTEXT_TRACKING_MODE ContextTrackingMode;
+        public BOOLEAN EffectiveOnly;
+    }
 
-        public SECURITY_QUALITY_OF_SERVICE(
-            SECURITY_IMPERSONATION_LEVEL _impersonationLevel,
-            byte _contextTrackingMode,
-            byte _effectiveOnly)
-        {
-            Length = 0;
-            ImpersonationLevel = _impersonationLevel;
-            ContextTrackingMode = _contextTrackingMode;
-            EffectiveOnly = _effectiveOnly;
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SERVICE_STATUS
+    {
+        public SERVICE_TYPE dwServiceType;
+        public SERVICE_CURRENT_STATE dwCurrentState;
+        public SERVICE_ACCEPTED_CONTROLS dwControlsAccepted;
+        public int dwWin32ExitCode;
+        public int dwServiceSpecificExitCode;
+        public int dwCheckPoint;
+        public int dwWaitHint;
+    }
 
-            Length = Marshal.SizeOf(this);
-        }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SERVICE_STATUS_PROCESS
+    {
+        public SERVICE_TYPE dwServiceType;
+        public SERVICE_CURRENT_STATE dwCurrentState;
+        public SERVICE_ACCEPTED_CONTROLS dwControlsAccepted;
+        public int dwWin32ExitCode;
+        public int dwServiceSpecificExitCode;
+        public int dwCheckPoint;
+        public int dwWaitHint;
+        public int dwProcessId;
+        public SERVICE_FLAG dwServiceFlags;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -188,7 +420,7 @@ namespace TrustExec.Interop
         }
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     internal struct STARTUPINFO
     {
         public int cb;
@@ -203,7 +435,7 @@ namespace TrustExec.Interop
         public int dwYCountChars;
         public int dwFillAttribute;
         public int dwFlags;
-        public short wShowWindow;
+        public SHOW_WINDOW_FLAGS wShowWindow;
         public short cbReserved2;
         public IntPtr lpReserved2;
         public IntPtr hStdInput;
@@ -232,26 +464,9 @@ namespace TrustExec.Interop
     };
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_LINKED_TOKEN
-    {
-        public IntPtr LinkedToken;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_MANDATORY_LABEL
-    {
-        public SID_AND_ATTRIBUTES Label;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct TOKEN_OWNER
     {
         public IntPtr Owner; // PSID
-
-        public TOKEN_OWNER(IntPtr _owner)
-        {
-            Owner = _owner;
-        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -261,17 +476,11 @@ namespace TrustExec.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_PRIVILEGES
+    internal class TOKEN_PRIVILEGES
     {
         public int PrivilegeCount;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
         public LUID_AND_ATTRIBUTES[] Privileges;
-
-        public TOKEN_PRIVILEGES(int privilegeCount)
-        {
-            PrivilegeCount = privilegeCount;
-            Privileges = new LUID_AND_ATTRIBUTES[36];
-        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -335,5 +544,26 @@ namespace TrustExec.Interop
             else
                 return Marshal.PtrToStringUni(buffer, Length / 2);
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct USER_INFO_1
+    {
+        public string usri1_name;
+        public string usri1_password;
+        public int usri1_password_age;
+        public USER_PRIVS usri1_priv;
+        public string usri1_home_dir;
+        public string usri1_comment;
+        public USER_FLAGS usri1_flags;
+        public string usri1_script_path;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct WTS_SESSION_INFOW
+    {
+        public int SessionId;
+        public string WinStationName;
+        public WTS_CONNECTSTATE_CLASS State;
     }
 }

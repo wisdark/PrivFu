@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
+using System.Text.RegularExpressions;
 using TrustExec.Interop;
 
 namespace TrustExec.Library
@@ -11,718 +11,710 @@ namespace TrustExec.Library
 
     internal class Utilities
     {
-        public static bool AddVirtualAccount(string domain, string username, int domainRid)
+        public static bool CreateTokenAssignedSuspendedProcess(
+            IntPtr hToken,
+            string command,
+            ref bool bNewConsole,
+            out PROCESS_INFORMATION processInfo)
         {
-            int error;
-            NTSTATUS ntstatus;
-            var domainSid = string.Format("S-1-5-{0}", domainRid);
-            var userSid = string.Format("S-1-5-{0}-110", domainRid);
-
-            if (string.IsNullOrEmpty(domain) || string.IsNullOrEmpty(username))
-            {
-                Console.WriteLine("[!] Domain name and username are required.");
-                return false;
-            }
-
-            Console.WriteLine("[>] Trying to add virtual domain and user.");
-            Console.WriteLine("    |-> Domain   : {0} (SID : {1})", domain, domainSid);
-            Console.WriteLine("    |-> Username : {0} (SID : {1})", username, userSid);
-
-            if (!NativeMethods.ConvertStringSidToSid(
-                domainSid,
-                out IntPtr pSidDomain))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to initialize virtual domain SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return false;
-            }
-
-            if (!NativeMethods.ConvertStringSidToSid(
-                userSid,
-                out IntPtr pSidUser))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to initialize virtual domain SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return false;
-            }
-
-            ntstatus = Helpers.AddSidMapping(domain, null, pSidDomain);
-            NativeMethods.LocalFree(pSidDomain);
-
-            if (ntstatus == Win32Consts.STATUS_SUCCESS)
-            {
-                Helpers.AddSidMapping(domain, username, pSidUser);
-                Console.WriteLine("[+] Added virtual domain and user.");
-            }
-            else if (ntstatus == Win32Consts.STATUS_INVALID_PARAMETER)
-            {
-                Console.WriteLine("[*] {0} or {1} maybe already exists or invalid.", domainSid, domain);
-            }
-            else
-            {
-                Console.WriteLine("[-] Unexpected error.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(ntstatus, true));
-                
-                return false;
-            }
-
-            return true;
-        }
-
-
-        public static bool CreateTokenAssignedProcess(IntPtr hToken, string command)
-        {
+            bool bSuccess;
             var startupInfo = new STARTUPINFO
             {
                 cb = Marshal.SizeOf(typeof(STARTUPINFO)),
+                wShowWindow = bNewConsole ? SHOW_WINDOW_FLAGS.SW_SHOW : SHOW_WINDOW_FLAGS.SW_HIDE,
                 lpDesktop = @"Winsta0\Default"
             };
-            bool status = NativeMethods.CreateProcessAsUser(
+            var flags = PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB | PROCESS_CREATION_FLAGS.CREATE_SUSPENDED;
+
+            if (bNewConsole)
+                flags |= PROCESS_CREATION_FLAGS.CREATE_NEW_CONSOLE;
+
+            bSuccess = NativeMethods.CreateProcessAsUser(
                 hToken,
                 null,
                 command,
                 IntPtr.Zero,
                 IntPtr.Zero,
                 false,
-                0,
+                flags,
                 IntPtr.Zero,
                 Environment.CurrentDirectory,
                 in startupInfo,
-                out PROCESS_INFORMATION processInformation);
+                out processInfo);
 
-            if (status)
+            if (!bSuccess)
             {
-                NativeMethods.WaitForSingleObject(processInformation.hProcess, uint.MaxValue);
-                NativeMethods.CloseHandle(processInformation.hThread);
-                NativeMethods.CloseHandle(processInformation.hProcess);
-            }
-
-            return status;
-        }
-
-
-        public static bool CreateTokenPrivileges(
-            string[] privs,
-            out TOKEN_PRIVILEGES tokenPrivileges)
-        {
-            int error;
-            int sizeOfStruct = Marshal.SizeOf(typeof(TOKEN_PRIVILEGES));
-            IntPtr pPrivileges = Marshal.AllocHGlobal(sizeOfStruct);
-
-            tokenPrivileges = (TOKEN_PRIVILEGES)Marshal.PtrToStructure(
-                pPrivileges,
-                typeof(TOKEN_PRIVILEGES));
-            tokenPrivileges.PrivilegeCount = privs.Length;
-
-            for (var idx = 0; idx < tokenPrivileges.PrivilegeCount; idx++)
-            {
-                if (!NativeMethods.LookupPrivilegeValue(
+                bSuccess = NativeMethods.CreateProcessWithTokenW(
+                    hToken,
+                    LOGON_FLAGS.NONE,
                     null,
-                    privs[idx],
-                    out LUID luid))
-                {
-                    error = Marshal.GetLastWin32Error();
-                    Console.WriteLine("[-] Failed to lookup LUID for {0}.", privs[idx]);
-                    Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-
-                    return false;
-                }
-
-                tokenPrivileges.Privileges[idx].Attributes = (uint)(
-                    SE_PRIVILEGE_ATTRIBUTES.ENABLED |
-                    SE_PRIVILEGE_ATTRIBUTES.ENABLED_BY_DEFAULT);
-                tokenPrivileges.Privileges[idx].Luid = luid;
+                    command,
+                    flags,
+                    IntPtr.Zero,
+                    Environment.CurrentDirectory,
+                    in startupInfo,
+                    out processInfo);
+                bNewConsole = bSuccess;
             }
 
-            return true;
+            return bSuccess;
         }
 
 
         public static IntPtr CreateTrustedInstallerToken(
             TOKEN_TYPE tokenType,
-            SECURITY_IMPERSONATION_LEVEL impersonationLevel,
-            string[] extraSidsArray,
-            bool full)
+            in List<string> extraGroupSids)
         {
-            NTSTATUS ntstatus;
-            LUID authId = Win32Consts.SYSTEM_LUID;
-            var tokenSource = new TOKEN_SOURCE("*SYSTEM*");
-            string[] privs;
-
-            if (full)
+            IntPtr hToken;
+            IntPtr pTokenGroups;
+            int nOffset;
+            int nDosErrorCode;
+            int nPrivilegeCount = 0;
+            var nPrivilegesOffset = Marshal.OffsetOf(typeof(TOKEN_PRIVILEGES), "Privileges").ToInt32();
+            var nGroupOffset = Marshal.OffsetOf(typeof(TOKEN_GROUPS), "Groups").ToInt32();
+            var nPrivilegeSize = Marshal.SizeOf(typeof(LUID_AND_ATTRIBUTES));
+            var nGroupSize = Marshal.SizeOf(typeof(SID_AND_ATTRIBUTES));
+            var pTokenPrivileges = Marshal.AllocHGlobal(nPrivilegesOffset + nPrivilegeSize * 36);
+            var sqos = new SECURITY_QUALITY_OF_SERVICE
             {
-                privs = new string[] {
-                    Win32Consts.SE_CREATE_TOKEN_NAME,
-                    Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
-                    Win32Consts.SE_LOCK_MEMORY_NAME,
-                    Win32Consts.SE_INCREASE_QUOTA_NAME,
-                    Win32Consts.SE_MACHINE_ACCOUNT_NAME,
-                    Win32Consts.SE_TCB_NAME,
-                    Win32Consts.SE_SECURITY_NAME,
-                    Win32Consts.SE_TAKE_OWNERSHIP_NAME,
-                    Win32Consts.SE_LOAD_DRIVER_NAME,
-                    Win32Consts.SE_SYSTEM_PROFILE_NAME,
-                    Win32Consts.SE_SYSTEMTIME_NAME,
-                    Win32Consts.SE_PROFILE_SINGLE_PROCESS_NAME,
-                    Win32Consts.SE_INCREASE_BASE_PRIORITY_NAME,
-                    Win32Consts.SE_CREATE_PAGEFILE_NAME,
-                    Win32Consts.SE_CREATE_PERMANENT_NAME,
-                    Win32Consts.SE_BACKUP_NAME,
-                    Win32Consts.SE_RESTORE_NAME,
-                    Win32Consts.SE_SHUTDOWN_NAME,
-                    Win32Consts.SE_DEBUG_NAME,
-                    Win32Consts.SE_AUDIT_NAME,
-                    Win32Consts.SE_SYSTEM_ENVIRONMENT_NAME,
-                    Win32Consts.SE_CHANGE_NOTIFY_NAME,
-                    Win32Consts.SE_REMOTE_SHUTDOWN_NAME,
-                    Win32Consts.SE_UNDOCK_NAME,
-                    Win32Consts.SE_SYNC_AGENT_NAME,
-                    Win32Consts.SE_ENABLE_DELEGATION_NAME,
-                    Win32Consts.SE_MANAGE_VOLUME_NAME,
-                    Win32Consts.SE_IMPERSONATE_NAME,
-                    Win32Consts.SE_CREATE_GLOBAL_NAME,
-                    Win32Consts.SE_TRUSTED_CREDMAN_ACCESS_NAME,
-                    Win32Consts.SE_RELABEL_NAME,
-                    Win32Consts.SE_INCREASE_WORKING_SET_NAME,
-                    Win32Consts.SE_TIME_ZONE_NAME,
-                    Win32Consts.SE_CREATE_SYMBOLIC_LINK_NAME,
-                    Win32Consts.SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME
-                };
-            }
-            else
+                Length = Marshal.SizeOf(typeof(SECURITY_QUALITY_OF_SERVICE)),
+                ImpersonationLevel = (tokenType == TOKEN_TYPE.Primary) ? SECURITY_IMPERSONATION_LEVEL.Anonymous : SECURITY_IMPERSONATION_LEVEL.Impersonation,
+                ContextTrackingMode = SECURITY_CONTEXT_TRACKING_MODE.StaticTracking,
+                EffectiveOnly = BOOLEAN.FALSE
+            };
+            var privAttributes = (int)(SE_PRIVILEGE_ATTRIBUTES.Enabled | SE_PRIVILEGE_ATTRIBUTES.EnabledByDefault);
+            var pSqos = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SECURITY_QUALITY_OF_SERVICE)));
+            var groupAttributes = SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault;
+            var logonSessionSid = Helpers.GetCurrentLogonSessionSid();
+            var tokenGroups = new Dictionary<string, SE_GROUP_ATTRIBUTES>
             {
-                privs = new string[] {
-                    Win32Consts.SE_DEBUG_NAME,
-                    Win32Consts.SE_TCB_NAME,
-                    Win32Consts.SE_ASSIGNPRIMARYTOKEN_NAME,
-                    Win32Consts.SE_IMPERSONATE_NAME
-                };
-            }
-
-            Console.WriteLine("[>] Trying to create an elevated {0} token.",
-                tokenType == TOKEN_TYPE.TokenPrimary ? "primary" : "impersonation");
-
-            NativeMethods.ConvertStringSidToSid(
-                Win32Consts.TRUSTED_INSTALLER_RID,
-                out IntPtr pTrustedInstaller);
-
-            if (!CreateTokenPrivileges(
-                privs,
-                out TOKEN_PRIVILEGES tokenPrivileges))
+                { "S-1-1-0", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // Everyone
+                { "S-1-2-0", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // LOCAL
+                { "S-1-2-1", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // CONSOLE LOGON
+                { "S-1-5-6", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // NT AUTHORITY\SERVICE
+                { "S-1-5-11", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // NT AUTHORITY\Authenticated Users
+                { "S-1-5-18", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // NT AUTHORITY\SYSTEM
+                { "S-1-5-32-544", groupAttributes | SE_GROUP_ATTRIBUTES.Owner }, // BUILTIN\Administrators
+                { "S-1-5-32-545", groupAttributes | SE_GROUP_ATTRIBUTES.Mandatory }, // BUILTIN\Users
+                { "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464", groupAttributes | SE_GROUP_ATTRIBUTES.Owner }, // NT SERVICE\TrustedInstaller
+                { "S-1-16-16384", SE_GROUP_ATTRIBUTES.Integrity | SE_GROUP_ATTRIBUTES.IntegrityEnabled } // Mandatory Label\System Mandatory Level
+            };
+            var aces = new Dictionary<string, ACCESS_MASK>
             {
-                return IntPtr.Zero;
-            }
-
-            IntPtr hCurrentToken = WindowsIdentity.GetCurrent().Token;
-            IntPtr pTokenUser = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenUser);
-            IntPtr pTokenGroups = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenGroups);
-            IntPtr pTokenOwner = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenOwner);
-            IntPtr pTokenPrimaryGroup = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenPrimaryGroup);
-            IntPtr pTokenDefaultDacl = Helpers.GetInformationFromToken(
-                hCurrentToken,
-                TOKEN_INFORMATION_CLASS.TokenDefaultDacl);
-
-            if (pTokenDefaultDacl == IntPtr.Zero)
+                { "S-1-5-18", ACCESS_MASK.GENERIC_ALL },
+                { "S-1-5-32-544", ACCESS_MASK.GENERIC_EXECUTE | ACCESS_MASK.GENERIC_READ | ACCESS_MASK.READ_CONTROL }
+            };
+            var nAceSize = Marshal.OffsetOf(typeof(ACCESS_ALLOWED_ACE), "SidStart").ToInt32() + 0x10;
+            var pDefaultDacl = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(ACL)) + (nAceSize * aces.Count));
+            var acl = new ACL
             {
-                Console.WriteLine("[-] Failed to get current token information.");
-
-                return IntPtr.Zero;
-            }
-
-            var tokenUser = (TOKEN_USER)Marshal.PtrToStructure(
-                pTokenUser,
-                typeof(TOKEN_USER));
-            var tokenGroups = (TOKEN_GROUPS)Marshal.PtrToStructure(
-                pTokenGroups,
-                typeof(TOKEN_GROUPS));
-            var tokenOwner = (TOKEN_OWNER)Marshal.PtrToStructure(
-                pTokenOwner,
-                typeof(TOKEN_OWNER));
-            var tokenPrimaryGroup = (TOKEN_PRIMARY_GROUP)Marshal.PtrToStructure(
-                pTokenPrimaryGroup,
-                typeof(TOKEN_PRIMARY_GROUP));
-            var tokenDefaultDacl = (TOKEN_DEFAULT_DACL)Marshal.PtrToStructure(
-                pTokenDefaultDacl,
-                typeof(TOKEN_DEFAULT_DACL));
-
-            tokenGroups.Groups[tokenGroups.GroupCount].Sid = pTrustedInstaller;
-            tokenGroups.Groups[tokenGroups.GroupCount].Attributes = (uint)(
-                SE_GROUP_ATTRIBUTES.SE_GROUP_OWNER |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED_BY_DEFAULT |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED);
-            tokenGroups.GroupCount++;
-
-            for (var idx = 0; idx < extraSidsArray.Length; idx++)
-            {
-                if (tokenGroups.GroupCount >= 32)
-                {
-                    Console.WriteLine("[!] Token groups count reached maximum. {0} is ignored.", extraSidsArray[idx]);
-                    continue;
-                }
-
-                if (NativeMethods.ConvertStringSidToSid(
-                    extraSidsArray[idx],
-                    out IntPtr pExtraSid))
-                {
-                    tokenGroups.Groups[tokenGroups.GroupCount].Sid = pExtraSid;
-                    tokenGroups.Groups[tokenGroups.GroupCount].Attributes = (uint)(
-                        SE_GROUP_ATTRIBUTES.SE_GROUP_MANDATORY |
-                        SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED);
-                    tokenGroups.GroupCount++;
-                }
-                else
-                {
-                    Console.WriteLine("[-] Failed to add {0}.", extraSidsArray[idx]);
-                }
-            }
-
-            var expirationTime = new LARGE_INTEGER(-1L);
-            var sqos = new SECURITY_QUALITY_OF_SERVICE(
-                impersonationLevel,
-                Win32Consts.SECURITY_STATIC_TRACKING,
-                0);
-            var oa = new OBJECT_ATTRIBUTES(string.Empty, 0);
-            IntPtr pSqos = Marshal.AllocHGlobal(Marshal.SizeOf(sqos));
+                AclRevision = ACL_REVISION.ACL_REVISION,
+                AclSize = (short)(Marshal.SizeOf(typeof(ACL)) + (nAceSize * aces.Count)),
+                AceCount = (short)aces.Count
+            };
+            var groupSids = new Dictionary<string, IntPtr>();
             Marshal.StructureToPtr(sqos, pSqos, true);
-            oa.SecurityQualityOfService = pSqos;
 
-            ntstatus = NativeMethods.ZwCreateToken(
-                out IntPtr hToken,
-                TokenAccessFlags.TOKEN_ALL_ACCESS,
-                ref oa,
-                tokenType,
-                ref authId,
-                ref expirationTime,
-                ref tokenUser,
-                ref tokenGroups,
-                ref tokenPrivileges,
-                ref tokenOwner,
-                ref tokenPrimaryGroup,
-                ref tokenDefaultDacl,
-                ref tokenSource);
+            if (!string.IsNullOrEmpty(logonSessionSid))
+                tokenGroups.Add(logonSessionSid, groupAttributes | SE_GROUP_ATTRIBUTES.LogonId);
 
-            NativeMethods.LocalFree(pTokenUser);
-            NativeMethods.LocalFree(pTokenGroups);
-            NativeMethods.LocalFree(pTokenOwner);
-            NativeMethods.LocalFree(pTokenPrimaryGroup);
-            NativeMethods.LocalFree(pTokenDefaultDacl);
-
-            if (ntstatus != Win32Consts.STATUS_SUCCESS)
+            foreach (var sid in extraGroupSids)
             {
-                Console.WriteLine("[-] Failed to create privileged token.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(ntstatus, true));
-
-                return IntPtr.Zero;
+                if (Regex.IsMatch(sid, @"^S(-\d+){2,}$", RegexOptions.IgnoreCase))
+                    tokenGroups.Add(sid.ToUpper(), groupAttributes);
             }
 
-            Console.WriteLine("[+] An elevated {0} token is created successfully.",
-                tokenType == TOKEN_TYPE.TokenPrimary ? "primary" : "impersonation");
-
-            return hToken;
-        }
-
-
-        public static IntPtr CreateTrustedInstallerTokenWithVirtualLogon(
-            string domain,
-            string username,
-            int domainRid,
-            string[] extraSidsArray)
-        {
-            int error;
-
-            Console.WriteLine("[>] Trying to generate token group information.");
-
-            if (!NativeMethods.ConvertStringSidToSid(
-                Win32Consts.DOMAIN_ALIAS_RID_ADMINS,
-                out IntPtr pAdminGroup))
+            foreach (var strSid in extraGroupSids)
             {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get Administrator domain SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return IntPtr.Zero;
-            }
+                SID_NAME_USE sidType = Helpers.GetSidType(strSid);
 
-            if (!NativeMethods.ConvertStringSidToSid(
-                Win32Consts.TRUSTED_INSTALLER_RID,
-                out IntPtr pTrustedInstaller))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get Trusted Installer SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return IntPtr.Zero;
-            }
-
-            if (!NativeMethods.ConvertStringSidToSid(
-                Win32Consts.SYSTEM_MANDATORY_LEVEL,
-                out IntPtr pSystemIntegrity))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get System Integrity Level SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return IntPtr.Zero;
-            }
-
-            var tokenGroups = new TOKEN_GROUPS(2);
-
-            tokenGroups.Groups[0].Sid = pAdminGroup;
-            tokenGroups.Groups[0].Attributes = (uint)(
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED_BY_DEFAULT |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_MANDATORY);
-            tokenGroups.Groups[1].Sid = pTrustedInstaller;
-            tokenGroups.Groups[1].Attributes = (uint)(
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED_BY_DEFAULT |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_OWNER);
-
-            for (var idx = 0; idx < extraSidsArray.Length; idx++)
-            {
-                if (tokenGroups.GroupCount >= 32)
+                if (!tokenGroups.ContainsKey(strSid) &&
+                    ((sidType == SID_NAME_USE.WellKnownGroup) || (sidType == SID_NAME_USE.Alias) || (sidType == SID_NAME_USE.Group)))
                 {
-                    Console.WriteLine("[!] Token groups count reached maximum. {0} is ignored.", extraSidsArray[idx]);
-                    continue;
+                    tokenGroups.Add(
+                        strSid,
+                        SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory);
                 }
+            }
 
-                if (NativeMethods.ConvertStringSidToSid(
-                    extraSidsArray[idx],
-                    out IntPtr pExtraSid))
+            pTokenGroups = Marshal.AllocHGlobal(nGroupOffset + (nGroupSize * tokenGroups.Count));
+            nOffset = nGroupOffset;
+
+            foreach (var group in tokenGroups)
+            {
+                groupSids.Add(group.Key, Helpers.ConvertStringSidToSid(group.Key, out int _));
+                Marshal.WriteIntPtr(pTokenGroups, nOffset, groupSids[group.Key]);
+                Marshal.WriteInt32(pTokenGroups, nOffset + IntPtr.Size, (int)group.Value);
+                nOffset += nGroupSize;
+            }
+
+            Marshal.WriteInt32(pTokenGroups, tokenGroups.Count);
+            nOffset = nPrivilegesOffset;
+
+            for (var id = SE_PRIVILEGE_ID.SeCreateTokenPrivilege; id < SE_PRIVILEGE_ID.MaximumCount; id++)
+            {
+                Marshal.WriteInt64(pTokenPrivileges, nOffset, (long)id);
+                Marshal.WriteInt32(pTokenPrivileges, nOffset + 8, privAttributes);
+                nOffset += nPrivilegeSize;
+                nPrivilegeCount++;
+            }
+
+            Marshal.WriteInt32(pTokenPrivileges, nPrivilegeCount);
+            Marshal.StructureToPtr(acl, pDefaultDacl, true);
+            nOffset = Marshal.SizeOf(typeof(ACL));
+
+            foreach (var ace in aces)
+            {
+                IntPtr pSid = groupSids[ace.Key];
+                var entry = new ACCESS_ALLOWED_ACE
                 {
-                    tokenGroups.Groups[tokenGroups.GroupCount].Sid = pExtraSid;
-                    tokenGroups.Groups[tokenGroups.GroupCount].Attributes = (uint)(
-                        SE_GROUP_ATTRIBUTES.SE_GROUP_MANDATORY |
-                        SE_GROUP_ATTRIBUTES.SE_GROUP_ENABLED);
-                    tokenGroups.GroupCount++;
-                }
+                    Header = new ACE_HEADER
+                    {
+                        AceType = ACE_TYPE.AccessAllowed,
+                        AceFlags = ACE_FLAGS.None,
+                        AceSize = (short)nAceSize
+                    },
+                    Mask = ace.Value
+                };
+                int nSidSize = 8 + (Marshal.ReadByte(pSid, 1) * 4);
+
+                if (Environment.Is64BitProcess)
+                    Marshal.StructureToPtr(entry, new IntPtr(pDefaultDacl.ToInt64() + nOffset), true);
                 else
+                    Marshal.StructureToPtr(entry, new IntPtr(pDefaultDacl.ToInt32() + nOffset), true);
+
+                for (var idx = 0; idx < nSidSize; idx++)
                 {
-                    Console.WriteLine("[-] Failed to add {0}.", extraSidsArray[idx]);
+                    var oft = Marshal.OffsetOf(typeof(ACCESS_ALLOWED_ACE), "SidStart").ToInt32() + idx;
+                    Marshal.WriteByte(pDefaultDacl, nOffset + oft, Marshal.ReadByte(pSid, idx));
                 }
+
+                nOffset += nAceSize;
             }
-
-            var pTokenGroups = Marshal.AllocHGlobal(Marshal.SizeOf(tokenGroups));
-            Marshal.StructureToPtr(tokenGroups, pTokenGroups, true);
-
-            if (!AddVirtualAccount(domain, username, domainRid))
-                return IntPtr.Zero;
-
-            Console.WriteLine(@"[>] Trying to logon as {0}\{1}.", domain, username);
-
-            if (!NativeMethods.LogonUserExExW(
-                username,
-                domain,
-                null,
-                Win32Consts.LOGON32_LOGON_INTERACTIVE,
-                Win32Consts.LOGON32_PROVIDER_VIRTUAL,
-                pTokenGroups,
-                out IntPtr hToken,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                IntPtr.Zero))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to logon as virtual account.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                
-                return IntPtr.Zero;
-            }
-
-            IntPtr pLinkedToken = Helpers.GetInformationFromToken(hToken,
-                TOKEN_INFORMATION_CLASS.TokenLinkedToken);
-
-            if (pLinkedToken == IntPtr.Zero)
-                return IntPtr.Zero;
-
-            var linkedToken = (TOKEN_LINKED_TOKEN)Marshal.PtrToStructure(
-                pLinkedToken,
-                typeof(TOKEN_LINKED_TOKEN));
-
-            hToken = linkedToken.LinkedToken;
-
-            var mandatoryLabel = new TOKEN_MANDATORY_LABEL();
-            mandatoryLabel.Label.Sid = pSystemIntegrity;
-            mandatoryLabel.Label.Attributes = (uint)(
-                SE_GROUP_ATTRIBUTES.SE_GROUP_INTEGRITY |
-                SE_GROUP_ATTRIBUTES.SE_GROUP_INTEGRITY_ENABLED);
-
-            IntPtr pMandatoryLabel = Marshal.AllocHGlobal(Marshal.SizeOf(mandatoryLabel));
-            Marshal.StructureToPtr(mandatoryLabel, pMandatoryLabel, true);
-
-            if (!NativeMethods.SetTokenInformation(
-                hToken,
-                TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
-                pMandatoryLabel,
-                Marshal.SizeOf(mandatoryLabel)))
-            {
-                error = Marshal.GetLastWin32Error();
-                Console.WriteLine("[-] Failed to get System Integrity Level SID.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(error, false));
-                Marshal.FreeHGlobal(pMandatoryLabel);
-                
-                return IntPtr.Zero;
-            }
-
-            Marshal.FreeHGlobal(pMandatoryLabel);
-
-            return hToken;
-        }
-
-
-        public static bool EnableAllTokenPrivileges(
-            IntPtr hToken,
-            out Dictionary<string, bool> adjustedPrivs)
-        {
-            bool allEnabled;
 
             do
             {
-                var privsToEnable = new List<string>();
-                allEnabled = Helpers.GetTokenPrivileges(
-                    hToken,
-                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
-
-                if (!allEnabled)
+                var objectAttributes = new OBJECT_ATTRIBUTES
                 {
-                    adjustedPrivs = new Dictionary<string, bool>();
-                    break;
-                }
+                    Length = Marshal.SizeOf(typeof(OBJECT_ATTRIBUTES)),
+                    SecurityQualityOfService = pSqos
+                };
+                var authId = LUID.FromInt64(0x3e7); // SYSTEM_LUID
+                var expirationTime = new LARGE_INTEGER(-1L);
+                var tokenUser = new TOKEN_USER {
+                    User = new SID_AND_ATTRIBUTES { Sid = groupSids["S-1-5-18"] }
+                };
+                var tokenOwner = new TOKEN_OWNER { Owner = groupSids["S-1-5-18"] };
+                var tokenPrimaryGroup = new TOKEN_PRIMARY_GROUP { PrimaryGroup = groupSids["S-1-5-18"] };
+                var tokenDefaultDacl = new TOKEN_DEFAULT_DACL { DefaultDacl = pDefaultDacl };
+                var tokenSource = new TOKEN_SOURCE("*SYSTEM*");
+                NTSTATUS ntstatus = NativeMethods.NtCreateToken(
+                    out hToken,
+                    ACCESS_MASK.TOKEN_ALL_ACCESS,
+                    in objectAttributes,
+                    tokenType,
+                    in authId,
+                    in expirationTime,
+                    in tokenUser,
+                    pTokenGroups,
+                    pTokenPrivileges,
+                    in tokenOwner,
+                    in tokenPrimaryGroup,
+                    in tokenDefaultDacl,
+                    in tokenSource);
+                nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
 
-                foreach (var privName in availablePrivs.Keys)
-                    privsToEnable.Add(privName);
-
-                allEnabled = EnableTokenPrivileges(hToken, privsToEnable, out adjustedPrivs);
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    hToken = IntPtr.Zero;
             } while (false);
 
-            return allEnabled;
+            foreach (var pSid in groupSids.Values)
+                Marshal.FreeHGlobal(pSid);
+
+            Marshal.FreeHGlobal(pSqos);
+            Marshal.FreeHGlobal(pDefaultDacl);
+            Marshal.FreeHGlobal(pTokenGroups);
+            Marshal.FreeHGlobal(pTokenPrivileges);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return hToken;
         }
 
 
-        public static bool EnableTokenPrivileges(
-            IntPtr hToken,
-            List<string> requiredPrivs,
-            out Dictionary<string, bool> adjustedPrivs)
+        public static bool GetS4uLogonAccount(
+            out string upn,
+            out string domain,
+            out LSA_STRING pkgName,
+            out TOKEN_SOURCE tokenSource)
         {
-            var allEnabled = true;
-            adjustedPrivs = new Dictionary<string, bool>();
+            int nDosErrorCode = 0;
+            var bSuccess = false;
+            var fqdn = Helpers.GetCurrentDomainName();
+            upn = null;
+            domain = null;
+            pkgName = new LSA_STRING();
+            tokenSource = new TOKEN_SOURCE();
 
-            do
+            if (string.Compare(fqdn, Environment.MachineName, true) != 0)
             {
-                if (requiredPrivs.Count == 0)
-                    break;
+                var accountName = string.Format(@"{0}\{1}", domain, upn);
+                bSuccess = Helpers.ConvertAccountNameToSid(
+                    ref accountName,
+                    out string strSid,
+                    out SID_NAME_USE _);
 
-                allEnabled = Helpers.GetTokenPrivileges(
-                    hToken,
-                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
-
-                if (!allEnabled)
-                    break;
-
-                foreach (var priv in requiredPrivs)
+                if (bSuccess)
                 {
-                    adjustedPrivs.Add(priv, false);
-
-                    foreach (var available in availablePrivs)
+                    if (Regex.IsMatch(strSid, @"^S-1-5-21(-\d+)+$", RegexOptions.IgnoreCase))
                     {
-                        if (Helpers.CompareIgnoreCase(available.Key, priv))
+                        upn = Environment.UserName;
+                        domain = fqdn;
+                        pkgName = new LSA_STRING(Win32Consts.NEGOSSP_NAME);
+                        tokenSource = new TOKEN_SOURCE("NtLmSsp");
+                    }
+                    else
+                    {
+                        bSuccess = false;
+                    }
+                }
+            }
+
+            if (!bSuccess)
+            {
+                bSuccess = Helpers.GetLocalAccounts(out Dictionary<string, bool> localAccounts);
+
+                if (bSuccess)
+                {
+                    foreach (var account in localAccounts)
+                    {
+                        if (account.Value)
                         {
-                            if ((available.Value & SE_PRIVILEGE_ATTRIBUTES.ENABLED) != 0)
-                            {
-                                adjustedPrivs[priv] = true;
-                            }
-                            else
-                            {
-                                IntPtr pTokenPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
-                                var tokenPrivileges = new TOKEN_PRIVILEGES(1);
-
-                                if (NativeMethods.LookupPrivilegeValue(
-                                    null,
-                                    priv,
-                                    out tokenPrivileges.Privileges[0].Luid))
-                                {
-                                    tokenPrivileges.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.ENABLED;
-                                    Marshal.StructureToPtr(tokenPrivileges, pTokenPrivileges, true);
-
-                                    adjustedPrivs[priv] = NativeMethods.AdjustTokenPrivileges(
-                                        hToken,
-                                        false,
-                                        pTokenPrivileges,
-                                        Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
-                                        IntPtr.Zero,
-                                        out int _);
-                                    adjustedPrivs[priv] = (adjustedPrivs[priv] && (Marshal.GetLastWin32Error() == 0));
-                                }
-
-                                Marshal.FreeHGlobal(pTokenPrivileges);
-                            }
-
+                            upn = account.Key;
+                            domain = Environment.MachineName;
+                            pkgName = new LSA_STRING(Win32Consts.MSV1_0_PACKAGE_NAME);
+                            tokenSource = new TOKEN_SOURCE("User32");
                             break;
                         }
                     }
 
-                    if (!adjustedPrivs[priv])
-                        allEnabled = false;
+                    if (string.IsNullOrEmpty(upn))
+                    {
+                        nDosErrorCode = 0x490; // ERROR_NOT_FOUND
+                        bSuccess = false;
+                    }
                 }
-            } while (false);
+                else
+                {
+                    nDosErrorCode = Marshal.GetLastWin32Error();
+                }
+            }
 
-            return allEnabled;
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return bSuccess;
         }
 
 
-        public static bool ImpersonateAsSmss(List<string> privs)
+        public static IntPtr GetTrustedInstallerTokenWithS4uLogon(
+            string upn,
+            string domain,
+            in LSA_STRING pkgName,
+            in TOKEN_SOURCE tokenSource,
+            in List<string> extraGroupSids)
         {
-            int smss;
-            var status = false;
+            int nDosErrorCode;
+            NTSTATUS ntstatus;
+            var hS4ULogonToken = IntPtr.Zero;
+            var logonProcessName = new LSA_STRING("User32LogonProcess");
+            var tokenGroups = new Dictionary<string, SE_GROUP_ATTRIBUTES>
+            {
+                {
+                    // BUILTIN\Administrators
+                    "S-1-5-32-544",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                },
+                {
+                    // NT AUTHORITY\LOCAL SERVICE
+                    "S-1-5-19",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory
+                },
+                {
+                    // NT SERVICE\TrustedInstaller
+                    "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                }
+            };
+            string sessionSid = Helpers.GetCurrentLogonSessionSid();
 
-            try
+            if (string.IsNullOrEmpty(sessionSid))
+                sessionSid = Helpers.GetExplorerLogonSessionSid();
+
+            if (string.IsNullOrEmpty(sessionSid))
+                return IntPtr.Zero;
+
+            foreach (var strSid in extraGroupSids)
             {
-                smss = (Process.GetProcessesByName("smss")[0]).Id;
+                SID_NAME_USE sidType = Helpers.GetSidType(strSid);
+
+                if (!tokenGroups.ContainsKey(strSid) &&
+                    ((sidType == SID_NAME_USE.WellKnownGroup) || (sidType == SID_NAME_USE.Alias) || (sidType == SID_NAME_USE.Group)))
+                {
+                    tokenGroups.Add(
+                        strSid,
+                        SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory);
+                }
             }
-            catch
+
+            ntstatus = NativeMethods.LsaRegisterLogonProcess(in logonProcessName, out IntPtr hLsa, out uint _);
+
+            if (ntstatus != Win32Consts.STATUS_SUCCESS)
             {
-                return status;
+                nDosErrorCode = NativeMethods.LsaNtStatusToWinError(ntstatus);
+                NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+                return IntPtr.Zero;
             }
 
             do
             {
-                IntPtr hProcess = NativeMethods.OpenProcess(
-                    ACCESS_MASK.PROCESS_QUERY_LIMITED_INFORMATION,
-                    true,
-                    smss);
+                ntstatus = NativeMethods.LsaLookupAuthenticationPackage(hLsa, in pkgName, out uint nAuthPkg);
 
-                if (hProcess == IntPtr.Zero)
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
                     break;
 
-                status = NativeMethods.OpenProcessToken(
-                    hProcess,
-                    TokenAccessFlags.TOKEN_DUPLICATE,
-                    out IntPtr hToken);
-                NativeMethods.CloseHandle(hProcess);
+                using (var msv = new MSV1_0_S4U_LOGON(MSV1_0_LOGON_SUBMIT_TYPE.S4ULogon, 0, upn, domain))
+                {
+                    var originName = new LSA_STRING("S4U");
+                    var nGroupOffset = Marshal.OffsetOf(typeof(TOKEN_GROUPS), "Groups").ToInt32();
+                    var nUnitSize = Marshal.SizeOf(typeof(SID_AND_ATTRIBUTES));
+                    var pSids = new Dictionary<string, IntPtr>();
+                    var attributes = SE_GROUP_ATTRIBUTES.Enabled |
+                        SE_GROUP_ATTRIBUTES.EnabledByDefault |
+                        SE_GROUP_ATTRIBUTES.LogonId |
+                        SE_GROUP_ATTRIBUTES.Mandatory;
+                    var nGroupCount = 1 + tokenGroups.Count;
+                    var nTokenGroupsLength = nGroupOffset + (nUnitSize * nGroupCount);
+                    var pTokenGroups = Marshal.AllocHGlobal(nTokenGroupsLength);
+                    var nEntryOffset = nGroupOffset;
+                    var phToken = Marshal.AllocHGlobal(IntPtr.Size);
+                    Marshal.WriteInt32(pTokenGroups, nGroupCount);
 
-                if (!status)
-                    break;
+                    if (!string.IsNullOrEmpty(sessionSid))
+                    {
+                        pSids.Add(sessionSid, Helpers.ConvertStringSidToSid(sessionSid, out int _));
+                        Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[sessionSid]);
+                        Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)attributes);
+                        nEntryOffset += nUnitSize;
+                    }
 
-                status = NativeMethods.DuplicateTokenEx(
-                    hToken,
-                    TokenAccessFlags.MAXIMUM_ALLOWED,
-                    IntPtr.Zero,
-                    SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation,
-                    TOKEN_TYPE.TokenPrimary,
-                    out IntPtr hDupToken);
-                NativeMethods.CloseHandle(hToken);
+                    foreach (var group in tokenGroups)
+                    {
+                        pSids.Add(group.Key, Helpers.ConvertStringSidToSid(group.Key, out int _));
+                        Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[group.Key]);
+                        Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)group.Value);
+                        nEntryOffset += nUnitSize;
+                    }
 
-                if (!status)
-                    break;
+                    ntstatus = NativeMethods.LsaLogonUser(
+                        hLsa,
+                        in originName,
+                        SECURITY_LOGON_TYPE.Network,
+                        nAuthPkg,
+                        msv.Buffer,
+                        (uint)msv.Length,
+                        pTokenGroups,
+                        in tokenSource,
+                        out IntPtr ProfileBuffer,
+                        out uint ProfileBufferLength,
+                        out LUID LogonId,
+                        phToken,
+                        out QUOTA_LIMITS Quotas,
+                        out NTSTATUS SubStatus);
 
-                EnableTokenPrivileges(hDupToken, privs, out Dictionary<string, bool> _);
+                    if (ntstatus == Win32Consts.STATUS_SUCCESS)
+                        hS4ULogonToken = Marshal.ReadIntPtr(phToken);
 
-                status = ImpersonateThreadToken(hDupToken);
-                NativeMethods.CloseHandle(hDupToken);
+                    foreach (var pSid in pSids.Values)
+                        Marshal.FreeHGlobal(pSid);
+
+                    Marshal.FreeHGlobal(pTokenGroups);
+                    Marshal.FreeHGlobal(phToken);
+                }
             } while (false);
 
-            return status;
+            nDosErrorCode = NativeMethods.LsaNtStatusToWinError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            NativeMethods.LsaDeregisterLogonProcess(hLsa);
+
+            return hS4ULogonToken;
         }
 
 
-        public static bool ImpersonateThreadToken(IntPtr hImpersonationToken)
+        public static IntPtr GetTrustedInstallerTokenWithServiceLogon(
+            string username,
+            string domain,
+            in List<string> extraGroupSids)
         {
-            IntPtr pImpersonationLevel = Marshal.AllocHGlobal(4);
-            var status = false;
-
-            if (NativeMethods.ImpersonateLoggedOnUser(hImpersonationToken))
+            // When set pTokenGroups of LogonUserExExW, it must contain entry for logon SID,
+            // otherwise LogonUserExExW will be failed with ERROR_NOT_ENOUGH_MEMORY or some error.
+            bool bSuccess;
+            int nDosErrorCode = 0;
+            var hToken = IntPtr.Zero;
+            var tokenGroups = new Dictionary<string, SE_GROUP_ATTRIBUTES>
             {
-                NTSTATUS ntstatus = NativeMethods.NtQueryInformationToken(
-                    WindowsIdentity.GetCurrent().Token,
-                    TOKEN_INFORMATION_CLASS.TokenImpersonationLevel,
-                    pImpersonationLevel,
-                    4u,
-                    out uint _);
-
-                if (ntstatus == Win32Consts.STATUS_SUCCESS)
                 {
-                    var level = (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(pImpersonationLevel);
+                    // BUILTIN\Administrators
+                    "S-1-5-32-544",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                },
+                {
+                    // NT AUTHORITY\LOCAL SERVICE
+                    "S-1-5-19",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory
+                },
+                {
+                    // NT SERVICE\TrustedInstaller
+                    "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                }
+            };
+            string sessionSid = Helpers.GetCurrentLogonSessionSid();
 
-                    if (level == SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation)
-                        status = true;
-                    else if (level == SECURITY_IMPERSONATION_LEVEL.SecurityDelegation)
-                        status = true;
-                    else
-                        status = false;
+            // If failed to get current process logon session SID, try to get logon session SID
+            // from explorer.exe process.
+            if (string.IsNullOrEmpty(sessionSid))
+                sessionSid = Helpers.GetExplorerLogonSessionSid();
+
+            foreach (var strSid in extraGroupSids)
+            {
+                SID_NAME_USE sidType = Helpers.GetSidType(strSid);
+
+                if (!tokenGroups.ContainsKey(strSid) &&
+                    ((sidType == SID_NAME_USE.WellKnownGroup) || (sidType == SID_NAME_USE.Alias) || (sidType == SID_NAME_USE.Group)))
+                {
+                    tokenGroups.Add(
+                        strSid,
+                        SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory);
                 }
             }
 
-            Marshal.FreeHGlobal(pImpersonationLevel);
-
-            return status;
-        }
-
-
-        public static bool RemoveVirtualAccount(string domain, string username)
-        {
-            int ntstatus;
-
-            if (string.IsNullOrEmpty(domain))
+            if (!string.IsNullOrEmpty(sessionSid))
             {
-                Console.WriteLine("[!] Domain name is required.");
-                return false;
-            }
+                var nGroupOffset = Marshal.OffsetOf(typeof(TOKEN_GROUPS), "Groups").ToInt32();
+                var nUnitSize = Marshal.SizeOf(typeof(SID_AND_ATTRIBUTES));
+                var pSids = new Dictionary<string, IntPtr>();
+                var attributes = SE_GROUP_ATTRIBUTES.Enabled |
+                    SE_GROUP_ATTRIBUTES.EnabledByDefault |
+                    SE_GROUP_ATTRIBUTES.LogonId |
+                    SE_GROUP_ATTRIBUTES.Mandatory;
+                var nGroupCount = 1 + tokenGroups.Count;
+                var nTokenGroupsLength = nGroupOffset + (nUnitSize * nGroupCount);
+                var pTokenGroups = Marshal.AllocHGlobal(nTokenGroupsLength);
+                var nEntryOffset = nGroupOffset;
+                Marshal.WriteInt32(pTokenGroups, nGroupCount);
+                pSids.Add(sessionSid, Helpers.ConvertStringSidToSid(sessionSid, out int _));
 
-            Console.WriteLine("[>] Trying to remove SID.");
-            Console.WriteLine("    |-> Domain   : {0}", domain.ToLower());
+                // In TOKEN_GROUPS buffer, logon session SID entry must be placed before extra 
+                // group SIDs, otherwise LogonUserExExW will be failed with ERROR_ACCESS_DENIED.
+                Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[sessionSid]);
+                Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)attributes);
+                nEntryOffset += nUnitSize;
 
-            if (!string.IsNullOrEmpty(username))
-                Console.WriteLine("    |-> Username : {0}", username.ToLower());
+                foreach (var group in tokenGroups)
+                {
+                    pSids.Add(group.Key, Helpers.ConvertStringSidToSid(group.Key, out int _));
+                    Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[group.Key]);
+                    Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)group.Value);
+                    nEntryOffset += nUnitSize;
+                }
 
-            bool status = Helpers.ConvertAccountNameToSidString(
-                ref username,
-                ref domain,
-                out string sid,
-                out SID_NAME_USE _);
+                bSuccess = NativeMethods.LogonUserExExW(
+                    username,
+                    domain,
+                    null,
+                    LOGON_TYPE.Service,
+                    LOGON_PROVIDER.Default,
+                    pTokenGroups,
+                    out hToken,
+                    out IntPtr _,
+                    out IntPtr _,
+                    out int _,
+                    out QUOTA_LIMITS _);
 
-            if (string.IsNullOrEmpty(sid) || !status)
-            {
-                Console.WriteLine("[-] Failed to lookup.");
-                return false;
+                if (!bSuccess)
+                {
+                    hToken = IntPtr.Zero;
+                    nDosErrorCode = Marshal.GetLastWin32Error();
+                }
+
+                Marshal.FreeHGlobal(pTokenGroups);
+
+                foreach (var pSid in pSids.Values)
+                    Marshal.FreeHGlobal(pSid);
             }
             else
             {
-                Console.WriteLine("[*] SID : {0}.", sid);
+                nDosErrorCode = Marshal.GetLastWin32Error();
             }
 
-            ntstatus = Helpers.RemoveSidMapping(domain, username);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
 
-            if (ntstatus == Win32Consts.STATUS_NOT_FOUND)
+            return hToken;
+        }
+
+
+        public static IntPtr GetTrustedInstallerTokenWithVirtualLogon(
+            string username,
+            string domain,
+            in List<string> extraGroupSids)
+        {
+            // When set pTokenGroups of LogonUserExExW, it must contain entry for logon SID,
+            // otherwise LogonUserExExW will be failed with ERROR_NOT_ENOUGH_MEMORY or some error.
+            bool bSuccess;
+            int nDosErrorCode = 0;
+            var hToken = IntPtr.Zero;
+            var tokenGroups = new Dictionary<string, SE_GROUP_ATTRIBUTES>
             {
-                Console.WriteLine("[-] Requested SID is not exist.\n");
+                {
+                    // BUILTIN\Administrators
+                    "S-1-5-32-544",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                },
+                {
+                    // NT AUTHORITY\LOCAL SERVICE
+                    "S-1-5-19",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory
+                },
+                {
+                    // NT SERVICE\TrustedInstaller
+                    "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+                    SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Owner
+                }
+            };
+            string sessionSid = Helpers.GetCurrentLogonSessionSid();
+
+            // If failed to get current process logon session SID, try to get logon session SID
+            // from explorer.exe process.
+            if (string.IsNullOrEmpty(sessionSid))
+                sessionSid = Helpers.GetExplorerLogonSessionSid();
+
+            foreach (var strSid in extraGroupSids)
+            {
+                SID_NAME_USE sidType = Helpers.GetSidType(strSid);
+
+                if (!tokenGroups.ContainsKey(strSid) &&
+                    ((sidType == SID_NAME_USE.WellKnownGroup) || (sidType == SID_NAME_USE.Alias) || (sidType == SID_NAME_USE.Group)))
+                {
+                    tokenGroups.Add(
+                        strSid,
+                        SE_GROUP_ATTRIBUTES.Enabled | SE_GROUP_ATTRIBUTES.EnabledByDefault | SE_GROUP_ATTRIBUTES.Mandatory);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(sessionSid))
+            {
+                var nGroupOffset = Marshal.OffsetOf(typeof(TOKEN_GROUPS), "Groups").ToInt32();
+                var nUnitSize = Marshal.SizeOf(typeof(SID_AND_ATTRIBUTES));
+                var pSids = new Dictionary<string, IntPtr>();
+                var attributes = SE_GROUP_ATTRIBUTES.Enabled |
+                    SE_GROUP_ATTRIBUTES.EnabledByDefault |
+                    SE_GROUP_ATTRIBUTES.LogonId |
+                    SE_GROUP_ATTRIBUTES.Mandatory;
+                var nGroupCount = 1 + tokenGroups.Count;
+                var nTokenGroupsLength = nGroupOffset + (nUnitSize * nGroupCount);
+                var pTokenGroups = Marshal.AllocHGlobal(nTokenGroupsLength);
+                var nEntryOffset = nGroupOffset;
+                Marshal.WriteInt32(pTokenGroups, nGroupCount);
+                pSids.Add(sessionSid, Helpers.ConvertStringSidToSid(sessionSid, out int _));
+
+                // In TOKEN_GROUPS buffer, logon session SID entry must be placed before extra 
+                // group SIDs, otherwise LogonUserExExW will be failed with ERROR_ACCESS_DENIED.
+                Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[sessionSid]);
+                Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)attributes);
+                nEntryOffset += nUnitSize;
+
+                foreach (var group in tokenGroups)
+                {
+                    pSids.Add(group.Key, Helpers.ConvertStringSidToSid(group.Key, out int _));
+                    Marshal.WriteIntPtr(pTokenGroups, nEntryOffset, pSids[group.Key]);
+                    Marshal.WriteInt32(pTokenGroups, nEntryOffset + IntPtr.Size, (int)group.Value);
+                    nEntryOffset += nUnitSize;
+                }
+
+                bSuccess = NativeMethods.LogonUserExExW(
+                    username,
+                    domain,
+                    null,
+                    LOGON_TYPE.Interactive,
+                    LOGON_PROVIDER.Virtual,
+                    pTokenGroups,
+                    out hToken,
+                    out IntPtr _,
+                    out IntPtr _,
+                    out int _,
+                    out QUOTA_LIMITS _);
+
+                if (!bSuccess)
+                {
+                    hToken = IntPtr.Zero;
+                    nDosErrorCode = Marshal.GetLastWin32Error();
+                }
+
+                Marshal.FreeHGlobal(pTokenGroups);
+
+                foreach (var pSid in pSids.Values)
+                    Marshal.FreeHGlobal(pSid);
+            }
+            else
+            {
+                nDosErrorCode = Marshal.GetLastWin32Error();
+            }
+
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return hToken;
+        }
+
+
+        public static bool ImpersonateAsSmss(
+            in List<SE_PRIVILEGE_ID> requiredPrivs,
+            out Dictionary<SE_PRIVILEGE_ID, bool> adjustedPrivs)
+        {
+            bool bSuccess;
+            int nSmssId;
+            IntPtr hImpersonationToken;
+
+            try
+            {
+                nSmssId = Process.GetProcessesByName("smss")[0].Id;
+            }
+            catch
+            {
+                adjustedPrivs = new Dictionary<SE_PRIVILEGE_ID, bool>();
+                NativeMethods.RtlSetLastWin32Error(5); // ERROR_ACCESS_DENIED
+                return false;
+            }
+
+            hImpersonationToken = Helpers.GetProcessToken(nSmssId, TOKEN_TYPE.Impersonation);
+
+            if (hImpersonationToken == IntPtr.Zero)
+            {
+                adjustedPrivs = new Dictionary<SE_PRIVILEGE_ID, bool>();
+                NativeMethods.RtlSetLastWin32Error(5);
+
+                foreach (var priv in requiredPrivs)
+                    adjustedPrivs.Add(priv, false);
 
                 return false;
             }
 
-            if (ntstatus != Win32Consts.STATUS_SUCCESS)
-            {
-                Console.WriteLine("[!] Unexpected error.");
-                Console.WriteLine("    |-> {0}\n", Helpers.GetWin32ErrorMessage(ntstatus, true));
-                
-                return false;
-            }
+            Helpers.EnableTokenPrivileges(
+                hImpersonationToken,
+                in requiredPrivs,
+                out adjustedPrivs);
+            bSuccess = Helpers.ImpersonateThreadToken(new IntPtr(-2), hImpersonationToken);
+            NativeMethods.NtClose(hImpersonationToken);
 
-            Console.WriteLine("[+] Requested SID is removed successfully.\n");
-
-            return true;
+            return bSuccess;
         }
     }
 }

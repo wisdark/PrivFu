@@ -255,11 +255,29 @@ namespace TokenDump.Interop
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 8, Pack = 4)]
     internal struct LUID
     {
+        [FieldOffset(0)]
         public int LowPart;
+        [FieldOffset(4)]
         public int HighPart;
+        [FieldOffset(0)]
+        public long QuadPart;
+
+        public LUID(int _low, int _high)
+        {
+            QuadPart = 0L;
+            LowPart = _low;
+            HighPart = _high;
+        }
+
+        public LUID(long _quad)
+        {
+            LowPart = 0;
+            HighPart = 0;
+            QuadPart = _quad;
+        }
 
         public long ToInt64()
         {
@@ -615,12 +633,6 @@ namespace TokenDump.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_ELEVATION
-    {
-        public int TokenIsElevated;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct TOKEN_GROUPS
     {
         public int GroupCount;
@@ -632,12 +644,6 @@ namespace TokenDump.Interop
             GroupCount = nGroupCount;
             Groups = new SID_AND_ATTRIBUTES[1];
         }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_LINKED_TOKEN
-    {
-        public IntPtr LinkedToken;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -676,12 +682,6 @@ namespace TokenDump.Interop
         public int PrivilegeCount;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
         public LUID_AND_ATTRIBUTES[] Privileges;
-
-        public TOKEN_PRIVILEGES(int nPrivilegeCount)
-        {
-            PrivilegeCount = nPrivilegeCount;
-            Privileges = new LUID_AND_ATTRIBUTES[1];
-        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -706,13 +706,6 @@ namespace TokenDump.Interop
         public TOKEN_SECURITY_ATTRIBUTE_FLAGS Flags;
         public uint ValueCount;
         public IntPtr Value;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct TOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION
-    {
-        public IntPtr /* PTOKEN_SECURITY_ATTRIBUTES_INFORMATION */ Attributes;
-        public IntPtr /* PTOKEN_SECURITY_ATTRIBUTE_OPERATION */ Operations;
     }
 
     [StructLayout(LayoutKind.Sequential)]

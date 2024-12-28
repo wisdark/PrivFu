@@ -13,305 +13,286 @@ namespace SwitchPriv.Library
     {
         public static bool DisableTokenPrivileges(
             IntPtr hToken,
-            List<string> privsToDisabled,
-            out Dictionary<string, bool> adjustedPrivs)
+            in List<SE_PRIVILEGE_ID> privsToDisable,
+            out Dictionary<SE_PRIVILEGE_ID, bool> adjustedPrivs)
         {
-            var allDisabled = true;
-            adjustedPrivs = new Dictionary<string, bool>();
+            bool bAllDisabled;
+            int nDosErrorCode;
+            IntPtr pInfoBuffer;
+            NTSTATUS nErrorStatus = Win32Consts.STATUS_SUCCESS;
+            adjustedPrivs = new Dictionary<SE_PRIVILEGE_ID, bool>();
 
-            do
+            foreach (var id in privsToDisable)
+                adjustedPrivs.Add(id, false);
+
+            if (privsToDisable.Count == 0)
+                return true;
+
+            bAllDisabled = Helpers.GetTokenPrivileges(
+                hToken,
+                out Dictionary<SE_PRIVILEGE_ID, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
+
+            if (!bAllDisabled)
+                return false;
+
+            pInfoBuffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
+
+            foreach (var priv in privsToDisable)
             {
-                if (privsToDisabled.Count == 0)
-                    break;
-
-                allDisabled = Helpers.GetTokenPrivileges(
-                    hToken,
-                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
-
-                if (!allDisabled)
-                    break;
-
-                foreach (var priv in privsToDisabled)
+                NTSTATUS ntstatus;
+                var info = new TOKEN_PRIVILEGES
                 {
-                    adjustedPrivs.Add(priv, true);
+                    PrivilegeCount = 1,
+                    Privileges = new LUID_AND_ATTRIBUTES[1]
+                };
 
-                    foreach (var available in availablePrivs)
-                    {
-                        if (Helpers.CompareIgnoreCase(available.Key, priv))
-                        {
-                            if ((available.Value & SE_PRIVILEGE_ATTRIBUTES.Enabled) == 0)
-                            {
-                                adjustedPrivs[priv] = false;
-                            }
-                            else
-                            {
-                                IntPtr pTokenPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
-                                var tokenPrivileges = new TOKEN_PRIVILEGES(1);
+                if (!availablePrivs.ContainsKey(priv))
+                    continue;
 
-                                if (NativeMethods.LookupPrivilegeValue(
-                                    null,
-                                    priv,
-                                    out tokenPrivileges.Privileges[0].Luid))
-                                {
-                                    tokenPrivileges.Privileges[0].Attributes = 0;
-                                    Marshal.StructureToPtr(tokenPrivileges, pTokenPrivileges, true);
+                if ((availablePrivs[priv] & SE_PRIVILEGE_ATTRIBUTES.Enabled) == 0)
+                    continue;
 
-                                    adjustedPrivs[priv] = NativeMethods.AdjustTokenPrivileges(
-                                        hToken,
-                                        false,
-                                        pTokenPrivileges,
-                                        Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
-                                        IntPtr.Zero,
-                                        out int _);
-                                    adjustedPrivs[priv] = !(adjustedPrivs[priv] && (Marshal.GetLastWin32Error() == 0));
-                                }
+                info.Privileges[0].Luid.QuadPart = (long)priv;
+                Marshal.StructureToPtr(info, pInfoBuffer, true);
+                ntstatus = NativeMethods.NtAdjustPrivilegesToken(
+                    hToken,
+                    BOOLEAN.TRUE,
+                    pInfoBuffer,
+                    (uint)Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
+                    IntPtr.Zero,
+                    out uint _);
+                adjustedPrivs[priv] = !(ntstatus == Win32Consts.STATUS_SUCCESS);
 
-                                Marshal.FreeHGlobal(pTokenPrivileges);
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (adjustedPrivs[priv])
-                        allDisabled = false;
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                {
+                    nErrorStatus = ntstatus;
+                    bAllDisabled = false;
                 }
-            } while (false);
+            }
 
-            return allDisabled;
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(nErrorStatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return bAllDisabled;
         }
 
 
         public static bool EnableTokenPrivileges(
-            List<string> requiredPrivs,
-            out Dictionary<string, bool> adjustedPrivs)
+            in List<SE_PRIVILEGE_ID> requiredPrivs,
+            out Dictionary<SE_PRIVILEGE_ID, bool> adjustedPrivs)
         {
             return EnableTokenPrivileges(
                 WindowsIdentity.GetCurrent().Token,
-                requiredPrivs,
+                in requiredPrivs,
                 out adjustedPrivs);
         }
 
 
         public static bool EnableTokenPrivileges(
             IntPtr hToken,
-            List<string> requiredPrivs,
-            out Dictionary<string, bool> adjustedPrivs)
+            in List<SE_PRIVILEGE_ID> privsToEnable,
+            out Dictionary<SE_PRIVILEGE_ID, bool> adjustedPrivs)
         {
-            var allEnabled = true;
-            adjustedPrivs = new Dictionary<string, bool>();
+            bool bAllEnabled;
+            int nDosErrorCode;
+            IntPtr pInfoBuffer;
+            NTSTATUS nErrorStatus = Win32Consts.STATUS_SUCCESS;
+            adjustedPrivs = new Dictionary<SE_PRIVILEGE_ID, bool>();
 
-            do
+            foreach (var id in privsToEnable)
+                adjustedPrivs.Add(id, false);
+
+            if (privsToEnable.Count == 0)
+                return true;
+
+            bAllEnabled = Helpers.GetTokenPrivileges(
+                hToken,
+                out Dictionary<SE_PRIVILEGE_ID, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
+
+            if (!bAllEnabled)
+                return false;
+
+            pInfoBuffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
+
+            foreach (var priv in privsToEnable)
             {
-                if (requiredPrivs.Count == 0)
-                    break;
-
-                allEnabled = Helpers.GetTokenPrivileges(
-                    hToken,
-                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
-
-                if (!allEnabled)
-                    break;
-
-                foreach (var priv in requiredPrivs)
+                NTSTATUS ntstatus;
+                var info = new TOKEN_PRIVILEGES
                 {
-                    adjustedPrivs.Add(priv, false);
+                    PrivilegeCount = 1,
+                    Privileges = new LUID_AND_ATTRIBUTES[1]
+                };
 
-                    foreach (var available in availablePrivs)
-                    {
-                        if (Helpers.CompareIgnoreCase(available.Key, priv))
-                        {
-                            if ((available.Value & SE_PRIVILEGE_ATTRIBUTES.Enabled) != 0)
-                            {
-                                adjustedPrivs[priv] = true;
-                            }
-                            else
-                            {
-                                IntPtr pTokenPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
-                                var tokenPrivileges = new TOKEN_PRIVILEGES(1);
-
-                                if (NativeMethods.LookupPrivilegeValue(
-                                    null,
-                                    priv,
-                                    out tokenPrivileges.Privileges[0].Luid))
-                                {
-                                    tokenPrivileges.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.Enabled;
-                                    Marshal.StructureToPtr(tokenPrivileges, pTokenPrivileges, true);
-
-                                    adjustedPrivs[priv] = NativeMethods.AdjustTokenPrivileges(
-                                        hToken,
-                                        false,
-                                        pTokenPrivileges,
-                                        Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
-                                        IntPtr.Zero,
-                                        out int _);
-                                    adjustedPrivs[priv] = (adjustedPrivs[priv] && (Marshal.GetLastWin32Error() == 0));
-                                }
-
-                                Marshal.FreeHGlobal(pTokenPrivileges);
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (!adjustedPrivs[priv])
-                        allEnabled = false;
+                if (!availablePrivs.ContainsKey(priv))
+                {
+                    nErrorStatus = Win32Consts.STATUS_PRIVILEGE_NOT_HELD;
+                    bAllEnabled = false;
+                    continue;
                 }
-            } while (false);
 
-            return allEnabled;
+                if ((availablePrivs[priv] & SE_PRIVILEGE_ATTRIBUTES.Enabled) != 0)
+                {
+                    adjustedPrivs[priv] = true;
+                    continue;
+                }
+
+                info.Privileges[0].Luid.QuadPart = (long)priv;
+                info.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.Enabled;
+                Marshal.StructureToPtr(info, pInfoBuffer, true);
+                ntstatus = NativeMethods.NtAdjustPrivilegesToken(
+                    hToken,
+                    BOOLEAN.FALSE,
+                    pInfoBuffer,
+                    (uint)Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
+                    IntPtr.Zero,
+                    out uint _);
+                adjustedPrivs[priv] = (ntstatus == Win32Consts.STATUS_SUCCESS);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                {
+                    nErrorStatus = ntstatus;
+                    bAllEnabled = false;
+                }
+            }
+
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(nErrorStatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return bAllEnabled;
         }
 
 
         public static bool ImpersonateAsSmss()
         {
-            return ImpersonateAsSmss(new List<string> { });
-        }
-
-
-        public static bool ImpersonateAsSmss(List<string> privs)
-        {
-            int smss;
-            var status = false;
+            int nSmssId;
+            IntPtr hToken;
+            var bSuccess = false;
+            var requiredPrivs = new List<SE_PRIVILEGE_ID> { SE_PRIVILEGE_ID.SeDebugPrivilege };
 
             try
             {
-                smss = (Process.GetProcessesByName("smss")[0]).Id;
+                nSmssId = Process.GetProcessesByName("smss")[0].Id;
             }
             catch
             {
-                return status;
+                NativeMethods.RtlSetLastWin32Error(5); // ERROR_ACCESS_DENIED
+                return false;
             }
 
-            do
+            hToken = Helpers.GetProcessToken(nSmssId, TOKEN_TYPE.Impersonation);
+
+            if (hToken != IntPtr.Zero)
             {
-                IntPtr hProcess = NativeMethods.OpenProcess(
-                    ProcessAccessFlags.PROCESS_QUERY_LIMITED_INFORMATION,
-                    true,
-                    smss);
-
-                if (hProcess == IntPtr.Zero)
-                    break;
-
-                status = NativeMethods.OpenProcessToken(
-                    hProcess,
-                    TokenAccessFlags.TOKEN_DUPLICATE,
-                    out IntPtr hToken);
-                NativeMethods.CloseHandle(hProcess);
-
-                if (!status)
-                    break;
-
-                status = NativeMethods.DuplicateTokenEx(
-                    hToken,
-                    TokenAccessFlags.MAXIMUM_ALLOWED,
-                    IntPtr.Zero,
-                    SECURITY_IMPERSONATION_LEVEL.Impersonation,
-                    TOKEN_TYPE.TokenImpersonation,
-                    out IntPtr hDupToken);
-                NativeMethods.CloseHandle(hToken);
-
-                if (!status)
-                    break;
-
-                EnableTokenPrivileges(hDupToken, privs, out Dictionary<string, bool> _);
-                status = ImpersonateThreadToken(hDupToken);
-                NativeMethods.CloseHandle(hDupToken);
-            } while (false);
-
-            return status;
-        }
-
-
-        public static bool ImpersonateThreadToken(IntPtr hImpersonationToken)
-        {
-            IntPtr pImpersonationLevel = Marshal.AllocHGlobal(4);
-            bool status = NativeMethods.ImpersonateLoggedOnUser(hImpersonationToken);
-
-            if (status)
-            {
-                NTSTATUS ntstatus = NativeMethods.NtQueryInformationToken(
-                    WindowsIdentity.GetCurrent().Token,
-                    TOKEN_INFORMATION_CLASS.TokenImpersonationLevel,
-                    pImpersonationLevel,
-                    4u,
-                    out uint _);
-                status = (ntstatus == Win32Consts.STATUS_SUCCESS);
-
-                if (status)
-                {
-                    var level = Marshal.ReadInt32(pImpersonationLevel);
-                    status = (level >= (int)SECURITY_IMPERSONATION_LEVEL.Impersonation);
-                }
+                EnableTokenPrivileges(in requiredPrivs, out Dictionary<SE_PRIVILEGE_ID, bool> _);
+                bSuccess = Helpers.ImpersonateThreadToken(new IntPtr(-2), hToken);
+                NativeMethods.NtClose(hToken);
             }
 
-            Marshal.FreeHGlobal(pImpersonationLevel);
-
-            return status;
+            return bSuccess;
         }
 
 
         public static bool RemoveTokenPrivileges(
             IntPtr hToken,
-            List<string> requiredPrivs,
-            out Dictionary<string, bool> operationStatus)
+            in List<SE_PRIVILEGE_ID> privsToRemove,
+            out Dictionary<SE_PRIVILEGE_ID, bool> removedStatus)
         {
-            var allRemoved = true;
-            operationStatus = new Dictionary<string, bool>();
+            bool bAllRemoved;
+            int nDosErrorCode;
+            IntPtr pInfoBuffer;
+            NTSTATUS nErrorStatus = Win32Consts.STATUS_SUCCESS;
+            removedStatus = new Dictionary<SE_PRIVILEGE_ID, bool>();
 
-            do
+            foreach (var id in privsToRemove)
+                removedStatus.Add(id, false);
+
+            if (privsToRemove.Count == 0)
+                return true;
+
+            bAllRemoved = Helpers.GetTokenPrivileges(
+                hToken,
+                out Dictionary<SE_PRIVILEGE_ID, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
+
+            if (!bAllRemoved)
+                return false;
+
+            pInfoBuffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
+
+            foreach (var priv in privsToRemove)
             {
-                if (requiredPrivs.Count == 0)
-                    break;
-
-                allRemoved = Helpers.GetTokenPrivileges(
-                    hToken,
-                    out Dictionary<string, SE_PRIVILEGE_ATTRIBUTES> availablePrivs);
-
-                if (!allRemoved)
-                    break;
-
-                foreach (var priv in requiredPrivs)
+                NTSTATUS ntstatus;
+                var info = new TOKEN_PRIVILEGES
                 {
-                    operationStatus.Add(priv, true);
+                    PrivilegeCount = 1,
+                    Privileges = new LUID_AND_ATTRIBUTES[1]
+                };
 
-                    foreach (var available in availablePrivs)
-                    {
-                        if (Helpers.CompareIgnoreCase(available.Key, priv))
-                        {
-                            IntPtr pTokenPrivileges = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)));
-                            var tokenPrivileges = new TOKEN_PRIVILEGES(1);
-
-                            if (NativeMethods.LookupPrivilegeValue(
-                                null,
-                                priv,
-                                out tokenPrivileges.Privileges[0].Luid))
-                            {
-                                tokenPrivileges.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.Removed;
-                                Marshal.StructureToPtr(tokenPrivileges, pTokenPrivileges, true);
-
-                                operationStatus[priv] = NativeMethods.AdjustTokenPrivileges(
-                                    hToken,
-                                    false,
-                                    pTokenPrivileges,
-                                    Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
-                                    IntPtr.Zero,
-                                    out int _);
-                                operationStatus[priv] = (operationStatus[priv] && (Marshal.GetLastWin32Error() == 0));
-                            }
-
-                            Marshal.FreeHGlobal(pTokenPrivileges);
-                            break;
-                        }
-                    }
-
-                    if (!operationStatus[priv])
-                        allRemoved = false;
+                if (!availablePrivs.ContainsKey(priv))
+                {
+                    removedStatus[priv] = true;
+                    continue;
                 }
-            } while (false);
 
-            return allRemoved;
+                info.Privileges[0].Luid.QuadPart = (long)priv;
+                info.Privileges[0].Attributes = (int)SE_PRIVILEGE_ATTRIBUTES.Removed;
+                Marshal.StructureToPtr(info, pInfoBuffer, true);
+                ntstatus = NativeMethods.NtAdjustPrivilegesToken(
+                    hToken,
+                    BOOLEAN.FALSE,
+                    pInfoBuffer,
+                    (uint)Marshal.SizeOf(typeof(TOKEN_PRIVILEGES)),
+                    IntPtr.Zero,
+                    out uint _);
+                removedStatus[priv] = (ntstatus == Win32Consts.STATUS_SUCCESS);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                {
+                    nErrorStatus = ntstatus;
+                    bAllRemoved = false;
+                }
+            }
+
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(nErrorStatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return bAllRemoved;
+        }
+
+
+        public static IntPtr OpenProcessToken(int pid, ACCESS_MASK tokenAccessMask)
+        {
+            int nDosErrorCode;
+            var hToken = IntPtr.Zero;
+            var objectAttrbutes = new OBJECT_ATTRIBUTES
+            {
+                Length = Marshal.SizeOf(typeof(OBJECT_ATTRIBUTES))
+            };
+            var clientId = new CLIENT_ID { UniqueProcess = new IntPtr(pid) };
+            NTSTATUS ntstatus = NativeMethods.NtOpenProcess(
+                out IntPtr hProcess,
+                ACCESS_MASK.PROCESS_QUERY_LIMITED_INFORMATION,
+                in objectAttrbutes,
+                in clientId);
+
+            if (ntstatus == Win32Consts.STATUS_SUCCESS)
+            {
+                ntstatus = NativeMethods.NtOpenProcessToken(
+                    hProcess,
+                    tokenAccessMask,
+                    out hToken);
+                NativeMethods.NtClose(hProcess);
+
+                if (ntstatus != Win32Consts.STATUS_SUCCESS)
+                    hToken = IntPtr.Zero;
+            }
+
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+
+            return hToken;
         }
 
 
@@ -320,9 +301,10 @@ namespace SwitchPriv.Library
             processName = null;
 
             if (pid == -1)
-                pid = Helpers.GetParentProcessId();
-
-            if (pid != -1)
+            {
+                pid = Helpers.GetParentProcessId(new IntPtr(-1));
+            }
+            else
             {
                 try
                 {
@@ -339,36 +321,37 @@ namespace SwitchPriv.Library
         }
 
 
-        public static bool SetMandatoryLevel(IntPtr hToken, string mandatoryLevelSid)
+        public static bool SetMandatoryLevel(IntPtr hToken, int rid)
         {
-            var status = false;
-
-            if (NativeMethods.ConvertStringSidToSid(mandatoryLevelSid, out IntPtr pSid))
+            int nDosErrorCode;
+            NTSTATUS ntstatus;
+            var labelBytes = new byte[] { 1, 1, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0 };
+            var nInfoLength = Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL)) + labelBytes.Length;
+            var pInfoBuffer = Marshal.AllocHGlobal(nInfoLength);
+            var info = new TOKEN_MANDATORY_LABEL
             {
-                NTSTATUS ntstatus;
-                int nBufferSize = Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL));
-                IntPtr pTokenIntegrityLevel = Marshal.AllocHGlobal(nBufferSize);
-                var tokenIntegrityLevel = new TOKEN_MANDATORY_LABEL
-                {
-                    Label = new SID_AND_ATTRIBUTES
-                    {
-                        Sid = pSid,
-                        Attributes = (uint)(SE_GROUP_ATTRIBUTES.Integrity),
-                    }
-                };
-                Marshal.StructureToPtr(tokenIntegrityLevel, pTokenIntegrityLevel, true);
-                nBufferSize += NativeMethods.GetLengthSid(pSid);
+                Label = new SID_AND_ATTRIBUTES()
+            };
+            info.Label.Attributes = (uint)(SE_GROUP_ATTRIBUTES.Integrity);
 
-                ntstatus = NativeMethods.NtSetInformationToken(
-                    hToken,
-                    TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
-                    pTokenIntegrityLevel,
-                    (uint)nBufferSize);
-                status = (ntstatus == Win32Consts.STATUS_SUCCESS);
-                Marshal.FreeHGlobal(pTokenIntegrityLevel);
-            }
+            if (Environment.Is64BitProcess)
+                info.Label.Sid = new IntPtr(pInfoBuffer.ToInt64() + Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL)));
+            else
+                info.Label.Sid = new IntPtr(pInfoBuffer.ToInt32() + Marshal.SizeOf(typeof(TOKEN_MANDATORY_LABEL)));
 
-            return status;
+            Marshal.StructureToPtr(info, pInfoBuffer, true);
+            Marshal.Copy(labelBytes, 0, info.Label.Sid, labelBytes.Length);
+            Marshal.WriteInt32(info.Label.Sid, 8, rid);
+            ntstatus = NativeMethods.NtSetInformationToken(
+                hToken,
+                TOKEN_INFORMATION_CLASS.TokenIntegrityLevel,
+                pInfoBuffer,
+                (uint)nInfoLength);
+            nDosErrorCode = (int)NativeMethods.RtlNtStatusToDosError(ntstatus);
+            NativeMethods.RtlSetLastWin32Error(nDosErrorCode);
+            Marshal.FreeHGlobal(pInfoBuffer);
+
+            return (ntstatus == Win32Consts.STATUS_SUCCESS);
         }
     }
 }

@@ -7,17 +7,9 @@ namespace TrustExec.Interop
     {
         NO_ACCESS = 0x00000000,
 
-        // For Directory
-        DIRECTORY_QUERY = 0x00000001,
-        DIRECTORY_TRAVERSE = 0x00000002,
-        DIRECTORY_CREATE_OBJECT = 0x00000004,
-        DIRECTORY_CREATE_SUBDIRECTORY = 0x00000008,
-        DIRECTORY_ALL_ACCESS = 0x000F000F,
-
         // For Process
         PROCESS_TERMINATE = 0x00000001,
         PROCESS_CREATE_THREAD = 0x00000002,
-        PROCESS_SET_SESSIONID = 0x00000004,
         PROCESS_VM_OPERATION = 0x00000008,
         PROCESS_VM_READ = 0x00000010,
         PROCESS_VM_WRITE = 0x00000020,
@@ -28,24 +20,7 @@ namespace TrustExec.Interop
         PROCESS_QUERY_INFORMATION = 0x00000400,
         PROCESS_SUSPEND_RESUME = 0x00000800,
         PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000,
-        PROCESS_SET_LIMITED_INFORMATION = 0x00002000,
-        PROCESS_ALL_ACCESS = 0x001FFFFF,
-
-        // For Thread
-        THREAD_TERMINATE = 0x00000001,
-        THREAD_SUSPEND_RESUME = 0x00000002,
-        THREAD_ALERT = 0x00000004,
-        THREAD_GET_CONTEXT = 0x00000008,
-        THREAD_SET_CONTEXT = 0x00000010,
-        THREAD_SET_INFORMATION = 0x00000020,
-        THREAD_QUERY_INFORMATION = 0x00000040,
-        THREAD_SET_THREAD_TOKEN = 0x00000080,
-        THREAD_IMPERSONATE = 0x00000100,
-        THREAD_DIRECT_IMPERSONATION = 0x00000200,
-        THREAD_SET_LIMITED_INFORMATION = 0x00000400,
-        THREAD_QUERY_LIMITED_INFORMATION = 0x00000800,
-        THREAD_RESUME = 0x00001000,
-        THREAD_ALL_ACCESS = 0x001FFFFF,
+        PROCESS_ALL_ACCESS = 0x001F0FFF,
 
         // For Token
         TOKEN_ASSIGN_PRIMARY = 0x00000001,
@@ -62,30 +37,28 @@ namespace TrustExec.Interop
         TOKEN_READ = 0x00020008,
         TOKEN_WRITE = 0x000200E0,
 
-        // For Files
-        FILE_ANY_ACCESS = 0x00000000,
-        FILE_READ_ACCESS = 0x00000001,
-        FILE_WRITE_ACCESS = 0x00000002,
-        FILE_READ_DATA = 0x00000001,
-        FILE_LIST_DIRECTORY = 0x00000001,
-        FILE_WRITE_DATA = 0x00000002,
-        FILE_ADD_FILE = 0x00000002,
-        FILE_APPEND_DATA = 0x00000004,
-        FILE_ADD_SUBDIRECTORY = 0x00000004,
-        FILE_CREATE_PIPE_INSTANCE = 0x00000004,
-        FILE_READ_EA = 0x00000008,
-        FILE_WRITE_EA = 0x00000010,
-        FILE_EXECUTE = 0x00000020,
-        FILE_TRAVERSE = 0x00000020,
-        FILE_DELETE_CHILD = 0x00000040,
-        FILE_READ_ATTRIBUTES = 0x00000080,
-        FILE_WRITE_ATTRIBUTES = 0x00000100,
-        FILE_ALL_ACCESS = 0x001F01FF,
-        FILE_GENERIC_READ = 0x00100089,
-        FILE_GENERIC_WRITE = 0x00100116,
-        FILE_GENERIC_EXECUTE = 0x001000A0,
+        // Service Control Manager
+        SC_MANAGER_CONNECT = 0x00000001,
+        SC_MANAGER_CREATE_SERVICE = 0x00000002,
+        SC_MANAGER_ENUMERATE_SERVICE = 0x00000004,
+        SC_MANAGER_LOCK = 0x00000008,
+        SC_MANAGER_QUERY_LOCK_STATUS = 0x00000010,
+        SC_MANAGER_MODIFY_BOOT_CONFIG = 0x00000020,
+        SC_MANAGER_ALL_ACCESS = 0x000F003F,
 
-        // Others
+        // Service
+        SERVICE_QUERY_CONFIG = 0x00000001,
+        SERVICE_CHANGE_CONFIG = 0x00000002,
+        SERVICE_QUERY_STATUS = 0x00000004,
+        SERVICE_ENUMERATE_DEPENDENTS = 0x00000008,
+        SERVICE_START = 0x00000010,
+        SERVICE_STOP = 0x00000020,
+        SERVICE_PAUSE_CONTINUE = 0x00000040,
+        SERVICE_INTERROGATE = 0x00000080,
+        SERVICE_USER_DEFINED_CONTROL = 0x00000100,
+        SERVICE_ALL_ACCESS = 0x000F01FF,
+
+        // Standard and Generic Rights
         DELETE = 0x00010000,
         READ_CONTROL = 0x00020000,
         WRITE_DAC = 0x00040000,
@@ -96,59 +69,113 @@ namespace TrustExec.Interop
         STANDARD_RIGHTS_WRITE = 0x00020000,
         STANDARD_RIGHTS_EXECUTE = 0x00020000,
         STANDARD_RIGHTS_ALL = 0x001F0000,
-        SPECIFIC_RIGHTS_ALL = 0x0000FFFF,
         ACCESS_SYSTEM_SECURITY = 0x01000000,
         MAXIMUM_ALLOWED = 0x02000000,
         GENERIC_ALL = 0x10000000,
         GENERIC_EXECUTE = 0x20000000,
         GENERIC_WRITE = 0x40000000,
         GENERIC_READ = 0x80000000,
-        DESKTOP_READOBJECTS = 0x00000001,
-        DESKTOP_CREATEWINDOW = 0x00000002,
-        DESKTOP_CREATEMENU = 0x00000004,
-        DESKTOP_HOOKCONTROL = 0x00000008,
-        DESKTOP_JOURNALRECORD = 0x00000010,
-        DESKTOP_JOURNALPLAYBACK = 0x00000020,
-        DESKTOP_ENUMERATE = 0x00000040,
-        DESKTOP_WRITEOBJECTS = 0x00000080,
-        DESKTOP_SWITCHDESKTOP = 0x00000100,
-        WINSTA_ENUMDESKTOPS = 0x00000001,
-        WINSTA_READATTRIBUTES = 0x00000002,
-        WINSTA_ACCESSCLIPBOARD = 0x00000004,
-        WINSTA_CREATEDESKTOP = 0x00000008,
-        WINSTA_WRITEATTRIBUTES = 0x00000010,
-        WINSTA_ACCESSGLOBALATOMS = 0x00000020,
-        WINSTA_EXITWINDOWS = 0x00000040,
-        WINSTA_ENUMERATE = 0x00000100,
-        WINSTA_READSCREEN = 0x00000200,
-        WINSTA_ALL_ACCESS = 0x0000037F,
-
-        // For section
-        SECTION_QUERY = 0x00000001,
-        SECTION_MAP_WRITE = 0x00000002,
-        SECTION_MAP_READ = 0x00000004,
-        SECTION_MAP_EXECUTE = 0x00000008,
-        SECTION_EXTEND_SIZE = 0x00000010,
-        SECTION_MAP_EXECUTE_EXPLICIT = 0x00000020,
-        SECTION_ALL_ACCESS = 0x000F001F
     }
 
     [Flags]
-    internal enum FormatMessageFlags : uint
+    internal enum ACE_FLAGS : byte
     {
-        FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100,
-        FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200,
-        FORMAT_MESSAGE_FROM_STRING = 0x00000400,
-        FORMAT_MESSAGE_FROM_HMODULE = 0x00000800,
-        FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000,
-        FORMAT_MESSAGE_ARGUMENT_ARRAY = 0x00002000
+        None = 0x00,
+        ObjectInherit = 0x01,
+        ContainerInherit = 0x02,
+        NoPropagateInherit = 0x04,
+        InheritOnly = 0x08,
+        Inherited = 0x10,
+        FailedAccess = 0x40,
+        SuccessfulAccess = 0x80
+    }
+
+    internal enum ACL_REVISION : byte
+    {
+        ACL_REVISION = 2,
+        ACL_REVISION_DS = 4,
+    }
+
+    internal enum ACE_TYPE : byte
+    {
+        AccessAllowed,
+        AccessDenied,
+        SystemAudit,
+        SystemAlarm,
+        AccessAllowedCompound,
+        AccessAllowedObject,
+        AccessDeniedObject,
+        SystemAuditObject,
+        SystemAlarmObject,
+        AccessAllowedCallback,
+        AccessDeniedCallback,
+        AccessAllowedCallbackObject,
+        AccessDeniedCallbackObject,
+        SystemAuditCallback,
+        SystemAlarmCallback,
+        SystemAuditCallbackObject,
+        SystemAlarmCallbackObject,
+        SystemMandatoryLabel,
+        SystemResourceAttribute,
+        SystemScopedPolicyId,
+        SystemProcessTrustLabel,
+        SystemAccessFilter,
+        // ACCESS_MAX_MS_V5 = 0x15
+    }
+
+    internal enum BOOLEAN : byte
+    {
+        FALSE,
+        TRUE
+    }
+
+    internal enum COMPUTER_NAME_FORMAT
+    {
+        NetBIOS,
+        DnsHostname,
+        DnsDomain,
+        DnsFullyQualified,
+        PhysicalNetBIOS,
+        PhysicalDnsHostname,
+        PhysicalDnsDomain,
+        PhysicalDnsFullyQualified,
+        Max
+    }
+
+    internal enum ERROR_CONTROL
+    {
+        IGNORE,
+        NORMAL,
+        SEVERE,
+        CRITICAL
     }
 
     [Flags]
-    internal enum LogonFlags : uint
+    internal enum LOGON_FLAGS : uint
     {
+        NONE = 0x00000000,
         LOGON_WITH_PROFILE = 0x00000001,
         LOGON_NETCREDENTIALS_ONLY = 0x00000002
+    }
+
+    internal enum LOGON_PROVIDER
+    {
+        Default = 0,
+        Winnt35,
+        Winnt40,
+        Winnt50,
+        Virtual
+    }
+
+    internal enum LOGON_TYPE
+    {
+        Interactive = 2,
+        Network,
+        Batch,
+        Service,
+        Unlock,
+        NetworkClearText,
+        NewCredentials
     }
 
     internal enum LSA_SID_NAME_MAPPING_OPERATION_ERROR
@@ -158,8 +185,8 @@ namespace TrustExec.Interop
         NameCollision,
         SidCollision,
         DomainNotFound,
-        DomainSidPrefixMismatch,
-        MappingNotFound
+        DomainSidPrefixMismatch = 6,
+        MappingNotFound = 7
     }
 
     internal enum LSA_SID_NAME_MAPPING_OPERATION_TYPE
@@ -169,172 +196,303 @@ namespace TrustExec.Interop
         AddMultiple
     }
 
-    [Flags]
-    internal enum ProcessCreationFlags : uint
+    internal enum MSV1_0_LOGON_SUBMIT_TYPE
     {
+        InteractiveLogon = 2,
+        Lm20Logon,
+        NetworkLogon,
+        SubAuthLogon,
+        WorkstationUnlockLogon = 7,
+        S4ULogon = 12,
+        VirtualLogon = 82,
+        NoElevationLogon = 83,
+        LuidLogon = 84
+    }
+
+    [Flags]
+    internal enum OBJECT_ATTRIBUTES_FLAGS : uint
+    {
+        None = 0x00000000,
+        ProtectClose = 0x00000001,
+        Inherit = 0x00000002,
+        AuditObjectClose = 0x00000004,
+        NoEightsUpgrade = 0x00000008,
+        Permanent = 0x00000010,
+        Exclusive = 0x00000020,
+        CaseInsensitive = 0x00000040,
+        OpenIf = 0x00000080,
+        OpenLink = 0x00000100,
+        KernelHandle = 0x00000200,
+        ForceAccessCheck = 0x00000400,
+        IgnoreImpersonatedDevicemap = 0x00000800,
+        DontReparse = 0x00001000,
+        ValieAttributes = 0x00001FF2
+    }
+
+    [Flags]
+    internal enum PROCESS_CREATION_FLAGS : uint
+    {
+        NONE = 0x00000000,
         DEBUG_PROCESS = 0x00000001,
         DEBUG_ONLY_THIS_PROCESS = 0x00000002,
         CREATE_SUSPENDED = 0x00000004,
         DETACHED_PROCESS = 0x00000008,
         CREATE_NEW_CONSOLE = 0x00000010,
+        NORMAL_PRIORITY_CLASS = 0x00000020,
+        IDLE_PRIORITY_CLASS = 0x00000040,
+        HIGH_PRIORITY_CLASS = 0x00000080,
+        REALTIME_PRIORITY_CLASS = 0x00000100,
         CREATE_NEW_PROCESS_GROUP = 0x00000200,
         CREATE_UNICODE_ENVIRONMENT = 0x00000400,
         CREATE_SEPARATE_WOW_VDM = 0x00000800,
         CREATE_SHARED_WOW_VDM = 0x00001000,
+        CREATE_FORCEDOS = 0x00002000,
+        BELOW_NORMAL_PRIORITY_CLASS = 0x00004000,
+        ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000,
         INHERIT_PARENT_AFFINITY = 0x00010000,
+        INHERIT_CALLER_PRIORITY = 0x00020000, // Deprecated
         CREATE_PROTECTED_PROCESS = 0x00040000,
         EXTENDED_STARTUPINFO_PRESENT = 0x00080000,
+        PROCESS_MODE_BACKGROUND_BEGIN = 0x00100000,
+        PROCESS_MODE_BACKGROUND_END = 0x00200000,
+        CREATE_SECURE_PROCESS = 0x00400000,
         CREATE_BREAKAWAY_FROM_JOB = 0x01000000,
         CREATE_PRESERVE_CODE_AUTHZ_LEVEL = 0x02000000,
         CREATE_DEFAULT_ERROR_MODE = 0x04000000,
         CREATE_NO_WINDOW = 0x08000000,
+        PROFILE_USER = 0x10000000,
+        PROFILE_KERNEL = 0x20000000,
+        PROFILE_SERVER = 0x40000000,
+        CREATE_IGNORE_SYSTEM_DEFAULT = 0x80000000
     }
 
-    internal enum PROCESSINFOCLASS
+    internal enum SC_ENUM_TYPE
     {
-        ProcessBasicInformation, // q: PROCESS_BASIC_INFORMATION, PROCESS_EXTENDED_BASIC_INFORMATION
-        ProcessQuotaLimits, // qs: QUOTA_LIMITS, QUOTA_LIMITS_EX
-        ProcessIoCounters, // q: IO_COUNTERS
-        ProcessVmCounters, // q: VM_COUNTERS, VM_COUNTERS_EX, VM_COUNTERS_EX2
-        ProcessTimes, // q: KERNEL_USER_TIMES
-        ProcessBasePriority, // s: KPRIORITY
-        ProcessRaisePriority, // s: ULONG
-        ProcessDebugPort, // q: HANDLE
-        ProcessExceptionPort, // s: PROCESS_EXCEPTION_PORT (requires SeTcbPrivilege)
-        ProcessAccessToken, // s: PROCESS_ACCESS_TOKEN
-        ProcessLdtInformation, // qs: PROCESS_LDT_INFORMATION // 10
-        ProcessLdtSize, // s: PROCESS_LDT_SIZE
-        ProcessDefaultHardErrorMode, // qs: ULONG
-        ProcessIoPortHandlers, // (kernel-mode only) // PROCESS_IO_PORT_HANDLER_INFORMATION
-        ProcessPooledUsageAndLimits, // q: POOLED_USAGE_AND_LIMITS
-        ProcessWorkingSetWatch, // q: PROCESS_WS_WATCH_INFORMATION[]; s: void
-        ProcessUserModeIOPL, // qs: ULONG (requires SeTcbPrivilege)
-        ProcessEnableAlignmentFaultFixup, // s: BOOLEAN
-        ProcessPriorityClass, // qs: PROCESS_PRIORITY_CLASS
-        ProcessWx86Information, // qs: ULONG (requires SeTcbPrivilege) (VdmAllowed)
-        ProcessHandleCount, // q: ULONG, PROCESS_HANDLE_INFORMATION // 20
-        ProcessAffinityMask, // (q >WIN7)s: KAFFINITY, qs: GROUP_AFFINITY
-        ProcessPriorityBoost, // qs: ULONG
-        ProcessDeviceMap, // qs: PROCESS_DEVICEMAP_INFORMATION, PROCESS_DEVICEMAP_INFORMATION_EX
-        ProcessSessionInformation, // q: PROCESS_SESSION_INFORMATION
-        ProcessForegroundInformation, // s: PROCESS_FOREGROUND_BACKGROUND
-        ProcessWow64Information, // q: ULONG_PTR
-        ProcessImageFileName, // q: UNICODE_STRING
-        ProcessLUIDDeviceMapsEnabled, // q: ULONG
-        ProcessBreakOnTermination, // qs: ULONG
-        ProcessDebugObjectHandle, // q: HANDLE // 30
-        ProcessDebugFlags, // qs: ULONG
-        ProcessHandleTracing, // q: PROCESS_HANDLE_TRACING_QUERY; s: size 0 disables, otherwise enables
-        ProcessIoPriority, // qs: IO_PRIORITY_HINT
-        ProcessExecuteFlags, // qs: ULONG
-        ProcessTlsInformation, // PROCESS_TLS_INFORMATION // ProcessResourceManagement
-        ProcessCookie, // q: ULONG
-        ProcessImageInformation, // q: SECTION_IMAGE_INFORMATION
-        ProcessCycleTime, // q: PROCESS_CYCLE_TIME_INFORMATION // since VISTA
-        ProcessPagePriority, // qs: PAGE_PRIORITY_INFORMATION
-        ProcessInstrumentationCallback, // s: PVOID or PROCESS_INSTRUMENTATION_CALLBACK_INFORMATION // 40
-        ProcessThreadStackAllocation, // s: PROCESS_STACK_ALLOCATION_INFORMATION, PROCESS_STACK_ALLOCATION_INFORMATION_EX
-        ProcessWorkingSetWatchEx, // q: PROCESS_WS_WATCH_INFORMATION_EX[]
-        ProcessImageFileNameWin32, // q: UNICODE_STRING
-        ProcessImageFileMapping, // q: HANDLE (input)
-        ProcessAffinityUpdateMode, // qs: PROCESS_AFFINITY_UPDATE_MODE
-        ProcessMemoryAllocationMode, // qs: PROCESS_MEMORY_ALLOCATION_MODE
-        ProcessGroupInformation, // q: USHORT[]
-        ProcessTokenVirtualizationEnabled, // s: ULONG
-        ProcessConsoleHostProcess, // qs: ULONG_PTR // ProcessOwnerInformation
-        ProcessWindowInformation, // q: PROCESS_WINDOW_INFORMATION // 50
-        ProcessHandleInformation, // q: PROCESS_HANDLE_SNAPSHOT_INFORMATION // since WIN8
-        ProcessMitigationPolicy, // s: PROCESS_MITIGATION_POLICY_INFORMATION
-        ProcessDynamicFunctionTableInformation,
-        ProcessHandleCheckingMode, // qs: ULONG; s: 0 disables, otherwise enables
-        ProcessKeepAliveCount, // q: PROCESS_KEEPALIVE_COUNT_INFORMATION
-        ProcessRevokeFileHandles, // s: PROCESS_REVOKE_FILE_HANDLES_INFORMATION
-        ProcessWorkingSetControl, // s: PROCESS_WORKING_SET_CONTROL
-        ProcessHandleTable, // q: ULONG[] // since WINBLUE
-        ProcessCheckStackExtentsMode, // qs: ULONG // KPROCESS->CheckStackExtents (CFG)
-        ProcessCommandLineInformation, // q: UNICODE_STRING // 60
-        ProcessProtectionInformation, // q: PS_PROTECTION
-        ProcessMemoryExhaustion, // PROCESS_MEMORY_EXHAUSTION_INFO // since THRESHOLD
-        ProcessFaultInformation, // PROCESS_FAULT_INFORMATION
-        ProcessTelemetryIdInformation, // q: PROCESS_TELEMETRY_ID_INFORMATION
-        ProcessCommitReleaseInformation, // PROCESS_COMMIT_RELEASE_INFORMATION
-        ProcessDefaultCpuSetsInformation, // SYSTEM_CPU_SET_INFORMATION[5]
-        ProcessAllowedCpuSetsInformation, // SYSTEM_CPU_SET_INFORMATION[5]
-        ProcessSubsystemProcess,
-        ProcessJobMemoryInformation, // q: PROCESS_JOB_MEMORY_INFO
-        ProcessInPrivate, // s: void // ETW // since THRESHOLD2 // 70
-        ProcessRaiseUMExceptionOnInvalidHandleClose, // qs: ULONG; s: 0 disables, otherwise enables
-        ProcessIumChallengeResponse,
-        ProcessChildProcessInformation, // q: PROCESS_CHILD_PROCESS_INFORMATION
-        ProcessHighGraphicsPriorityInformation, // qs: BOOLEAN (requires SeTcbPrivilege)
-        ProcessSubsystemInformation, // q: SUBSYSTEM_INFORMATION_TYPE // since REDSTONE2
-        ProcessEnergyValues, // q: PROCESS_ENERGY_VALUES, PROCESS_EXTENDED_ENERGY_VALUES
-        ProcessPowerThrottlingState, // qs: POWER_THROTTLING_PROCESS_STATE
-        ProcessReserved3Information, // ProcessActivityThrottlePolicy // PROCESS_ACTIVITY_THROTTLE_POLICY
-        ProcessWin32kSyscallFilterInformation, // q: WIN32K_SYSCALL_FILTER
-        ProcessDisableSystemAllowedCpuSets, // 80
-        ProcessWakeInformation, // PROCESS_WAKE_INFORMATION
-        ProcessEnergyTrackingState, // PROCESS_ENERGY_TRACKING_STATE
-        ProcessManageWritesToExecutableMemory, // MANAGE_WRITES_TO_EXECUTABLE_MEMORY // since REDSTONE3
-        ProcessCaptureTrustletLiveDump,
-        ProcessTelemetryCoverage,
-        ProcessEnclaveInformation,
-        ProcessEnableReadWriteVmLogging, // PROCESS_READWRITEVM_LOGGING_INFORMATION
-        ProcessUptimeInformation, // q: PROCESS_UPTIME_INFORMATION
-        ProcessImageSection, // q: HANDLE
-        ProcessDebugAuthInformation, // since REDSTONE4 // 90
-        ProcessSystemResourceManagement, // PROCESS_SYSTEM_RESOURCE_MANAGEMENT
-        ProcessSequenceNumber, // q: ULONGLONG
-        ProcessLoaderDetour, // since REDSTONE5
-        ProcessSecurityDomainInformation, // PROCESS_SECURITY_DOMAIN_INFORMATION
-        ProcessCombineSecurityDomainsInformation, // PROCESS_COMBINE_SECURITY_DOMAINS_INFORMATION
-        ProcessEnableLogging, // PROCESS_LOGGING_INFORMATION
-        ProcessLeapSecondInformation, // PROCESS_LEAP_SECOND_INFORMATION
-        ProcessFiberShadowStackAllocation, // PROCESS_FIBER_SHADOW_STACK_ALLOCATION_INFORMATION // since 19H1
-        ProcessFreeFiberShadowStackAllocation, // PROCESS_FREE_FIBER_SHADOW_STACK_ALLOCATION_INFORMATION
-        ProcessAltSystemCallInformation, // qs: BOOLEAN (kernel-mode only) // INT2E // since 20H1 // 100
-        ProcessDynamicEHContinuationTargets, // PROCESS_DYNAMIC_EH_CONTINUATION_TARGETS_INFORMATION
-        ProcessDynamicEnforcedCetCompatibleRanges, // PROCESS_DYNAMIC_ENFORCED_ADDRESS_RANGE_INFORMATION // since 20H2
-        ProcessCreateStateChange, // since WIN11
-        ProcessApplyStateChange,
-        ProcessEnableOptionalXStateFeatures,
-        ProcessAltPrefetchParam, // since 22H1
-        ProcessAssignCpuPartitions,
-        ProcessPriorityClassEx, // s: PROCESS_PRIORITY_CLASS_EX
-        ProcessMembershipInformation,
-        ProcessEffectiveIoPriority, // q: IO_PRIORITY_HINT
-        ProcessEffectivePagePriority, // q: ULONG
-        MaxProcessInfoClass
+        PROCESS_INFO
     }
 
-    internal enum SECURITY_IMPERSONATION_LEVEL
+    internal enum SC_STATUS_TYPE
     {
-        SecurityAnonymous,
-        SecurityIdentification,
-        SecurityImpersonation,
-        SecurityDelegation
+        PROCESS_INFO = 0
     }
 
     [Flags]
     internal enum SE_GROUP_ATTRIBUTES : uint
     {
-        SE_GROUP_MANDATORY = 0x00000001,
-        SE_GROUP_ENABLED_BY_DEFAULT = 0x00000002,
-        SE_GROUP_ENABLED = 0x00000004,
-        SE_GROUP_OWNER = 0x00000008,
-        SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010,
-        SE_GROUP_INTEGRITY = 0x00000020,
-        SE_GROUP_INTEGRITY_ENABLED = 0x00000040,
-        SE_GROUP_RESOURCE = 0x20000000,
-        SE_GROUP_LOGON_ID = 0xC0000000
+        Mandatory = 0x00000001,
+        EnabledByDefault = 0x00000002,
+        Enabled = 0x00000004,
+        Owner = 0x00000008,
+        UseForDenyOnly = 0x00000010,
+        Integrity = 0x00000020,
+        IntegrityEnabled = 0x00000040,
+        Resource = 0x20000000,
+        LogonId = 0xC0000000
     }
 
     [Flags]
     internal enum SE_PRIVILEGE_ATTRIBUTES : uint
     {
-        ENABLED_BY_DEFAULT = 0x00000001,
-        ENABLED = 0x00000002,
-        USED_FOR_ACCESS = 0x80000000,
+        Disabled = 0x00000000,
+        EnabledByDefault = 0x00000001,
+        Enabled = 0x00000002,
+        Removed = 0x00000004,
+        UsedForAccess = 0x80000000
+    }
+
+    internal enum SE_PRIVILEGE_ID
+    {
+        SeCreateTokenPrivilege = 2,
+        SeAssignPrimaryTokenPrivilege,
+        SeLockMemoryPrivilege,
+        SeIncreaseQuotaPrivilege,
+        SeMachineAccountPrivilege,
+        SeTcbPrivilege,
+        SeSecurityPrivilege,
+        SeTakeOwnershipPrivilege,
+        SeLoadDriverPrivilege,
+        SeSystemProfilePrivilege,
+        SeSystemtimePrivilege,
+        SeProfileSingleProcessPrivilege,
+        SeIncreaseBasePriorityPrivilege,
+        SeCreatePagefilePrivilege,
+        SeCreatePermanentPrivilege,
+        SeBackupPrivilege,
+        SeRestorePrivilege,
+        SeShutdownPrivilege,
+        SeDebugPrivilege,
+        SeAuditPrivilege,
+        SeSystemEnvironmentPrivilege,
+        SeChangeNotifyPrivilege,
+        SeRemoteShutdownPrivilege,
+        SeUndockPrivilege,
+        SeSyncAgentPrivilege,
+        SeEnableDelegationPrivilege,
+        SeManageVolumePrivilege,
+        SeImpersonatePrivilege,
+        SeCreateGlobalPrivilege,
+        SeTrustedCredManAccessPrivilege,
+        SeRelabelPrivilege,
+        SeIncreaseWorkingSetPrivilege,
+        SeTimeZonePrivilege,
+        SeCreateSymbolicLinkPrivilege,
+        SeDelegateSessionUserImpersonatePrivilege,
+        MaximumCount
+    }
+
+    internal enum SECURITY_CONTEXT_TRACKING_MODE : byte
+    {
+        StaticTracking = 0,
+        DynamicTracking
+    }
+
+    internal enum SECURITY_IMPERSONATION_LEVEL
+    {
+        Anonymous,
+        Identification,
+        Impersonation,
+        Delegation
+    }
+
+    [Flags]
+    internal enum SECURITY_INFORMATION : uint
+    {
+        OWNER_SECURITY_INFORMATION = 0x00000001,
+        GROUP_SECURITY_INFORMATION = 0x00000002,
+        DACL_SECURITY_INFORMATION = 0x00000004,
+        SACL_SECURITY_INFORMATION = 0x00000008,
+        LABEL_SECURITY_INFORMATION = 0x00000010,
+        ATTRIBUTE_SECURITY_INFORMATION = 0x00000020,
+        SCOPE_SECURITY_INFORMATION = 0x00000040,
+        PROCESS_TRUST_LABEL_SECURITY_INFORMATION = 0x00000080,
+        BACKUP_SECURITY_INFORMATION = 0x00010000,
+        UNPROTECTED_SACL_SECURITY_INFORMATION = 0x10000000,
+        UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000,
+        PROTECTED_SACL_SECURITY_INFORMATION = 0x40000000,
+        PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+    }
+
+    internal enum SECURITY_LOGON_TYPE
+    {
+        UndefinedLogonType = 0,
+        Interactive = 2,
+        Network,
+        Batch,
+        Service,
+        Proxy,
+        Unlock,
+        NetworkCleartext,
+        NewCredentials,
+        RemoteInteractive,
+        CachedInteractive,
+        CachedRemoteInteractive,
+        CachedUnlock
+    }
+
+    [Flags]
+    internal enum SERVICE_ACCEPTED_CONTROLS : uint
+    {
+        NONE = 0x00000000,
+        STOP = 0x00000001,
+        PAUSE_CONTINUE = 0x00000002,
+        SHUTDOWN = 0x00000004,
+        PARAMCHANGE = 0x00000008,
+        NETBINDCHANGE = 0x00000010,
+        HARDWAREPROFILECHANGE = 0x00000020,
+        POWEREVENT = 0x00000040,
+        SESSIONCHANGE = 0x00000080,
+        PRESHUTDOWN = 0x00000100,
+        TIMECHANGE = 0x00000200,
+        TRIGGEREVENT = 0x00000400,
+        USERMODEREBOOT = 0x00000800
+    }
+
+    internal enum SERVICE_CONTROL
+    {
+        STOP = 0x00000001,
+        PAUSE = 0x00000002,
+        CONTINUE = 0x00000003,
+        INTERROGATE = 0x00000004,
+        SHUTDOWN = 0x00000005,
+        PARAMCHANGE = 0x00000006,
+        NETBINDADD = 0x00000007,
+        NETBINDREMOVE = 0x00000008,
+        NETBINDENABLE = 0x00000009,
+        NETBINDDISABLE = 0x0000000A,
+        DEVICEEVENT = 0x0000000B,
+        HARDWAREPROFILECHANGE = 0x0000000C,
+        POWEREVENT = 0x0000000D,
+        SESSIONCHANGE = 0x0000000E,
+        PRESHUTDOWN = 0x0000000F,
+        TIMECHANGE = 0x00000010,
+        TRIGGEREVENT = 0x00000020,
+        LOWRESOURCES = 0x00000060,
+        SYSTEMLOWRESOURCES = 0x00000061
+    }
+
+    internal enum SERVICE_CURRENT_STATE
+    {
+        STOPPED = 1,
+        START_PENDING,
+        STOP_PENDING,
+        RUNNING,
+        CONTINUE_PENDING,
+        PAUSE_PENDING,
+        PAUSED
+    }
+
+    [Flags]
+    internal enum SERVICE_FLAG : uint
+    {
+        NONE = 0x00000000,
+        RUNS_IN_SYSTEM_PROCESS = 0x00000001
+    }
+
+    internal enum SERVICE_STATE
+    {
+        ACTIVE = 1,
+        INACTIVE,
+        STATE_ALL
+    }
+
+    [Flags]
+    internal enum SERVICE_TYPE : uint
+    {
+        KERNEL_DRIVER = 0x00000001,
+        FILE_SYSTEM_DRIVER = 0x00000002,
+        ADAPTER = 0x00000004,
+        RECOGNIZER_DRIVER = 0x00000008,
+        DRIVER = 0x0000000B,
+        WIN32_OWN_PROCESS = 0x00000010,
+        WIN32_SHARE_PROCESS = 0x00000020,
+        WIN32 = 0x00000030,
+        USER_SERVICE = 0x00000040,
+        USER_OWN_PROCESS = 0x00000050,
+        USER_SHARE_PROCESS = 0x00000060,
+        USERSERVICE_INSTANCE = 0x00000080,
+        INTERACTIVE_PROCESS = 0x00000100,
+        PKG_SERVICE = 0x00000200,
+        ALL = 0x000003FF
+    }
+
+    [Flags]
+    internal enum SHOW_WINDOW_FLAGS : ushort
+    {
+        SW_HIDE = 0,
+        SW_SHOWNORMAL = 1,
+        SW_NORMAL = 1,
+        SW_SHOWMINIMIZED = 2,
+        SW_SHOWMAXIMIZED = 3,
+        SW_MAXIMIZE = 3,
+        SW_SHOWNOACTIVATE = 4,
+        SW_SHOW = 5,
+        SW_MINIMIZE = 6,
+        SW_SHOWMINNOACTIVE = 7,
+        SW_SHOWNA = 8,
+        SW_RESTORE = 9,
+        SW_SHOWDEFAULT = 10,
+        SW_FORCEMINIMIZE = 11,
+        SW_MAX = 11
     }
 
     internal enum SID_NAME_USE
@@ -352,54 +510,84 @@ namespace TrustExec.Interop
         LogonSession
     }
 
-    internal enum SW : short
+    internal enum START_TYPE
     {
-        SW_HIDE = 0,
-        SW_SHOWNORMAL = 1,
-        SW_NORMAL = 1,
-        SW_SHOWMINIMIZED = 2,
-        SW_SHOWMAXIMIZED = 3,
-        SW_MAXIMIZE = 3,
-        SW_SHOWNOACTIVATE = 4,
-        SW_SHOW = 5,
-        SW_MINIMIZE = 6,
-        SW_SHOWMINNOACTIVE = 7,
-        SW_SHOWNA = 8,
-        SW_RESTORE = 9,
-        SW_SHOWDEFAULT = 10,
-        SW_MAX = 10
+        BOOT_START,
+        SYSTEM_START,
+        AUTO_START,
+        DEMAND_START,
+        DISABLED
+    }
+
+    internal enum THREADINFOCLASS
+    {
+        ThreadBasicInformation, // q: THREAD_BASIC_INFORMATION
+        ThreadTimes, // q: KERNEL_USER_TIMES
+        ThreadPriority, // s: KPRIORITY (requires SeIncreaseBasePriorityPrivilege)
+        ThreadBasePriority, // s: KPRIORITY
+        ThreadAffinityMask, // s: KAFFINITY
+        ThreadImpersonationToken, // s: HANDLE
+        ThreadDescriptorTableEntry, // q: DESCRIPTOR_TABLE_ENTRY (or WOW64_DESCRIPTOR_TABLE_ENTRY)
+        ThreadEnableAlignmentFaultFixup, // s: BOOLEAN
+        ThreadEventPair,
+        ThreadQuerySetWin32StartAddress, // q: ULONG_PTR
+        ThreadZeroTlsCell, // s: ULONG // TlsIndex // 10
+        ThreadPerformanceCount, // q: LARGE_INTEGER
+        ThreadAmILastThread, // q: ULONG
+        ThreadIdealProcessor, // s: ULONG
+        ThreadPriorityBoost, // qs: ULONG
+        ThreadSetTlsArrayAddress, // s: ULONG_PTR // Obsolete
+        ThreadIsIoPending, // q: ULONG
+        ThreadHideFromDebugger, // q: BOOLEAN; s: void
+        ThreadBreakOnTermination, // qs: ULONG
+        ThreadSwitchLegacyState, // s: void // NtCurrentThread // NPX/FPU
+        ThreadIsTerminated, // q: ULONG // 20
+        ThreadLastSystemCall, // q: THREAD_LAST_SYSCALL_INFORMATION
+        ThreadIoPriority, // qs: IO_PRIORITY_HINT (requires SeIncreaseBasePriorityPrivilege)
+        ThreadCycleTime, // q: THREAD_CYCLE_TIME_INFORMATION
+        ThreadPagePriority, // qs: PAGE_PRIORITY_INFORMATION
+        ThreadActualBasePriority, // s: LONG (requires SeIncreaseBasePriorityPrivilege)
+        ThreadTebInformation, // q: THREAD_TEB_INFORMATION (requires THREAD_GET_CONTEXT + THREAD_SET_CONTEXT)
+        ThreadCSwitchMon, // Obsolete
+        ThreadCSwitchPmu,
+        ThreadWow64Context, // qs: WOW64_CONTEXT, ARM_NT_CONTEXT since 20H1
+        ThreadGroupInformation, // qs: GROUP_AFFINITY // 30
+        ThreadUmsInformation, // q: THREAD_UMS_INFORMATION // Obsolete
+        ThreadCounterProfiling, // q: BOOLEAN; s: THREAD_PROFILING_INFORMATION?
+        ThreadIdealProcessorEx, // qs: PROCESSOR_NUMBER; s: previous PROCESSOR_NUMBER on return
+        ThreadCpuAccountingInformation, // q: BOOLEAN; s: HANDLE (NtOpenSession) // NtCurrentThread // since WIN8
+        ThreadSuspendCount, // q: ULONG // since WINBLUE
+        ThreadHeterogeneousCpuPolicy, // q: KHETERO_CPU_POLICY // since THRESHOLD
+        ThreadContainerId, // q: GUID
+        ThreadNameInformation, // qs: THREAD_NAME_INFORMATION
+        ThreadSelectedCpuSets,
+        ThreadSystemThreadInformation, // q: SYSTEM_THREAD_INFORMATION // 40
+        ThreadActualGroupAffinity, // q: GROUP_AFFINITY // since THRESHOLD2
+        ThreadDynamicCodePolicyInfo, // q: ULONG; s: ULONG (NtCurrentThread)
+        ThreadExplicitCaseSensitivity, // qs: ULONG; s: 0 disables, otherwise enables
+        ThreadWorkOnBehalfTicket, // RTL_WORK_ON_BEHALF_TICKET_EX
+        ThreadSubsystemInformation, // q: SUBSYSTEM_INFORMATION_TYPE // since REDSTONE2
+        ThreadDbgkWerReportActive, // s: ULONG; s: 0 disables, otherwise enables
+        ThreadAttachContainer, // s: HANDLE (job object) // NtCurrentThread
+        ThreadManageWritesToExecutableMemory, // MANAGE_WRITES_TO_EXECUTABLE_MEMORY // since REDSTONE3
+        ThreadPowerThrottlingState, // POWER_THROTTLING_THREAD_STATE // since REDSTONE3 (set), WIN11 22H2 (query)
+        ThreadWorkloadClass, // THREAD_WORKLOAD_CLASS // since REDSTONE5 // 50
+        ThreadCreateStateChange, // since WIN11
+        ThreadApplyStateChange,
+        ThreadStrongerBadHandleChecks, // since 22H1
+        ThreadEffectiveIoPriority, // q: IO_PRIORITY_HINT
+        ThreadEffectivePagePriority, // q: ULONG
+        ThreadUpdateLockOwnership, // since 24H2
+        ThreadSchedulerSharedDataSlot, // SCHEDULER_SHARED_DATA_SLOT_INFORMATION
+        ThreadTebInformationAtomic, // THREAD_TEB_INFORMATION
+        ThreadIndexInformation, // THREAD_INDEX_INFORMATION
+        MaxThreadInfoClass
     }
 
     internal enum TOKEN_TYPE
     {
-        TokenPrimary = 1,
-        TokenImpersonation
-    }
-
-    [Flags]
-    internal enum TokenAccessFlags : uint
-    {
-        TOKEN_ADJUST_DEFAULT = 0x0080,
-        TOKEN_ADJUST_GROUPS = 0x0040,
-        TOKEN_ADJUST_PRIVILEGES = 0x0020,
-        TOKEN_ADJUST_SESSIONID = 0x0100,
-        TOKEN_ASSIGN_PRIMARY = 0x0001,
-        TOKEN_DUPLICATE = 0x0002,
-        TOKEN_EXECUTE = 0x00020000,
-        TOKEN_IMPERSONATE = 0x0004,
-        TOKEN_QUERY = 0x0008,
-        TOKEN_QUERY_SOURCE = 0x0010,
-        TOKEN_READ = 0x00020008,
-        TOKEN_WRITE = 0x000200E0,
-        TOKEN_ALL_ACCESS = 0x000F01FF,
-        MAXIMUM_ALLOWED = 0x02000000
-    }
-
-    internal enum TOKEN_ELEVATION_TYPE
-    {
-        TokenElevationTypeDefault = 1,
-        TokenElevationTypeFull,
-        TokenElevationTypeLimited
+        Primary = 1,
+        Impersonation
     }
 
     internal enum TOKEN_INFORMATION_CLASS
@@ -433,5 +621,65 @@ namespace TrustExec.Interop
         TokenMandatoryPolicy,
         TokenLogonSid,
         MaxTokenInfoClass
+    }
+
+    [Flags]
+    internal enum USER_FLAGS : uint
+    {
+        UF_SCRIPT = 0x00000001,
+        UF_ACCOUNTDISABLE = 0x00000002,
+        UF_HOMEDIR_REQUIRED = 0x00000008,
+        UF_LOCKOUT = 0x00000010,
+        UF_PASSWD_NOTREQD = 0x00000020,
+        UF_PASSWD_CANT_CHANGE = 0x00000040,
+        UF_ENCRYPTED_TEXT_PASSWORD_ALLOWED = 0x00000080,
+        UF_TEMP_DUPLICATE_ACCOUNT = 0x00000100,
+        UF_NORMAL_ACCOUNT = 0x00000200,
+        UF_INTERDOMAIN_TRUST_ACCOUNT = 0x00000800,
+        UF_WORKSTATION_TRUST_ACCOUNT = 0x00001000,
+        UF_SERVER_TRUST_ACCOUNT = 0x00002000,
+        UF_DONT_EXPIRE_PASSWD = 0x00010000,
+        UF_MNS_LOGON_ACCOUNT = 0x00020000,
+        UF_SMARTCARD_REQUIRED = 0x00040000,
+        UF_TRUSTED_FOR_DELEGATION = 0x00080000,
+        UF_NOT_DELEGATED = 0x00100000,
+        UF_USE_DES_KEY_ONLY = 0x00200000,
+        UF_DONT_REQUIRE_PREAUTH = 0x00400000,
+        UF_PASSWORD_EXPIRED = 0x00800000,
+        UF_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION = 0x01000000,
+        UF_NO_AUTH_DATA_REQUIRED = 0x02000000,
+        UF_PARTIAL_SECRETS_ACCOUNT = 0x04000000,
+        UF_USE_AES_KEYS = 0x08000000
+    }
+
+    internal enum USER_INFO_FILTER
+    {
+        INTERDOMAIN_TRUST_ACCOUNT = 0x8,
+        NORMAL_ACCOUNT = 0x2,
+        PROXY_ACCOUNT = 0x4,
+        SERVER_TRUST_ACCOUNT = 0x20,
+        TEMP_DUPLICATE_ACCOUNT = 0x1,
+        WORKSTATION_TRUST_ACCOUNT = 0x10
+    }
+
+    internal enum USER_PRIVS
+    {
+        GUEST,
+        USER,
+        ADMIN
+    }
+
+    internal enum WTS_CONNECTSTATE_CLASS
+    {
+        Active,
+        Connected,
+        ConnectQuery,
+        Shadow,
+        Disconnected,
+        Idle,
+        Listen,
+        Reset,
+        Down,
+        Init
     }
 }
